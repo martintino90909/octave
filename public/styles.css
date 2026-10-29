@@ -216,9 +216,66 @@ main {
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
 .seg button[aria-checked="true"] { border-color: var(--cobalt); background: var(--cobalt-soft); }
 
+/* ---------- mic: tuner and string check ---------- */
+.tclock { margin: 0 0 4px; font-family: var(--f-display); font-weight: 800; font-size: 30px; font-variant-numeric: tabular-nums; }
+.tclock small { font-size: 18px; color: var(--muted); }
+.tnote { font-family: var(--f-display); font-weight: 900; line-height: .85; display: flex; justify-content: center; align-items: baseline; gap: 6px; min-height: 130px; }
+.tnote span { font-size: 140px; }
+.tnote small { font-size: 22px; color: var(--muted); font-weight: 800; }
+.meter { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 14px; font-size: 22px; color: var(--muted); }
+.track { position: relative; height: 44px; border-radius: 12px; background: var(--bg); }
+.track .zone { position: absolute; left: 45%; width: 10%; top: 0; bottom: 0; background: color-mix(in srgb, var(--good) 22%, transparent); }
+.track .mid { position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; background: var(--muted); }
+.track .needle {
+  position: absolute; left: 50%; top: 2px; bottom: 2px; width: 8px; margin-left: -4px; border-radius: 4px;
+  background: var(--amber); opacity: .25; transition: left 90ms linear;
+}
+.track .needle.ok { background: var(--good); }
+.thint { margin: 14px 0 0; font-weight: 700; font-size: 18px; min-height: 1.5em; }
+.tstrings { list-style: none; display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 16px; }
+.tstrings li {
+  display: grid; justify-items: center; padding: 8px 0 6px; border-radius: 12px; border: 2px solid var(--line);
+  font-family: var(--f-display); font-weight: 800; font-size: 24px; line-height: 1;
+}
+.tstrings li small { font-family: var(--f-body); font-weight: 400; font-size: 11px; color: var(--muted); min-height: 1.3em; margin-top: 2px; }
+.tstrings li.now { border-color: var(--amber); }
+.tstrings li.done { border-color: var(--good); background: var(--good); color: var(--surface); }
+.tstrings li.done small { color: inherit; }
+.mic-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--cobalt-soft); text-align: left; font-size: 15px; }
+.note-under { text-align: center; color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+
+.scheck { text-align: left; }
+.shint { margin: 0 0 10px; font-weight: 700; font-size: 17px; text-align: center; }
+.srows { list-style: none; display: grid; gap: 6px; }
+.srows li {
+  display: grid; grid-template-columns: 26px 1fr auto; grid-template-areas: "n l s" "n st st"; column-gap: 10px;
+  padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); align-items: center;
+}
+.srows .sn { grid-area: n; font-family: var(--f-display); font-weight: 800; font-size: 22px; color: var(--muted); }
+.srows .sl { grid-area: l; font-weight: 700; }
+.srows .snote { grid-area: s; font-family: var(--f-display); font-weight: 800; font-size: 20px; }
+.srows .sstat { grid-area: st; font-size: 14px; color: var(--muted); }
+.srows .sstat:empty { display: none; }
+.srows li.skip { opacity: .5; border-style: dashed; }
+.srows li.skip .snote { font-family: var(--f-body); font-weight: 400; font-size: 14px; }
+.srows li.now { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.srows li.ok { border-color: var(--good); }
+.srows li.ok .sstat { color: var(--good); font-weight: 700; }
+.srows li.bad { border-color: #C2412D; }
+.srows li.bad .sstat { color: #C2412D; font-weight: 700; }
+@media (prefers-color-scheme: dark) {
+  .srows li.bad { border-color: #F07A63; }
+  .srows li.bad .sstat { color: #F07A63; }
+}
+.last-check { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; font-weight: 700; font-size: 15px; }
+.last-check.ok { background: color-mix(in srgb, var(--good) 16%, transparent); }
+.last-check.bad { background: color-mix(in srgb, var(--amber) 22%, transparent); }
+#mic-area { margin-top: 16px; }
+.linkish { display: block; margin: 14px auto 0; border: 0; background: none; color: var(--muted); text-decoration: underline; font-size: 15px; padding: 8px; }
+
 /* ---------- tabs and toast ---------- */
 .tabs {
-  display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); background: var(--bg);
+  display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); background: var(--bg);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .tabs a { display: grid; justify-items: center; gap: 2px; padding: 8px 0 6px; text-decoration: none; color: var(--muted); font-size: 12px; font-weight: 700; }

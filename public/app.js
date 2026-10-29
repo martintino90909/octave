@@ -6,6 +6,7 @@ import {
 import { load, save } from "./lib/store.js";
 import { chordSvg } from "./lib/chord.js";
 import { Metronome, audio, beep, keepAwake } from "./lib/metronome.js";
+import { mountTuner, mountStringCheck, stringName } from "./micui.js";
 
 let state = load();
 const main = document.getElementById("main");
@@ -43,6 +44,7 @@ function route() {
   });
   if (page === "skill" && id) renderSkill(id);
   else if (page === "metronome") renderMetronome();
+  else if (page === "tuner") renderTuner();
   else renderPath();
   main.scrollTop = 0;
 }
@@ -147,29 +149,69 @@ function renderSkill(id) {
   if (skill.type === "changes") changesPanel(panel, skill, rerender);
 }
 
+// The last mic check per skill, shown again after the page redraws.
+const lastCheck = {};
+
 function repsPanel(panel, skill, rerender) {
   const ss = skillState(state, skill.id);
   const streak = Math.min(ss.streak || 0, skill.streak);
+  const mic = skill.check === "tuning" || skill.check === "strings";
+  const last = lastCheck[skill.id];
   panel.innerHTML = `
     <div class="panel">
       ${skill.streak > 1 ? `
         <div class="big"><span>${streak}</span><small>of ${skill.streak}</small></div>
         <p class="caption">clean in a row</p>
         <div class="pips" aria-hidden="true">${Array.from({ length: skill.streak }, (_, i) => `<i class="${i < streak ? "on" : ""}"></i>`).join("")}</div>` : ""}
-      <p class="question">${esc(skill.rateLabel)}</p>
-      <div class="rate two">
-        <button type="button" data-r="miss">No</button>
-        <button type="button" data-r="clean" class="primary">Yes</button>
+      ${last ? `<p class="last-check ${last.ok ? "ok" : "bad"}">${esc(last.text)}</p>` : ""}
+      ${mic ? `<div id="mic-area"></div>` : ""}
+      <div class="manual" ${mic ? "hidden" : ""}>
+        <p class="question">${esc(skill.rateLabel)}</p>
+        <div class="rate two">
+          <button type="button" data-r="miss">No</button>
+          <button type="button" data-r="clean" class="primary">Yes</button>
+        </div>
       </div>
+      ${mic ? `<button type="button" class="linkish" id="manual-toggle">No mic? Rate it yourself</button>` : ""}
     </div>`;
-  panel.querySelectorAll("[data-r]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const before = skillState(state, skill.id).passed;
-      commit(rateReps(state, skill, b.dataset.r === "clean"));
-      buzz();
-      rerender(before);
-    }),
-  );
+
+  const record = (clean, text, results) => {
+    const before = skillState(state, skill.id).passed;
+    commit(rateReps(state, skill, clean));
+    lastCheck[skill.id] = text ? { ok: clean, text, results } : null;
+    buzz();
+    rerender(before);
+  };
+
+  panel.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => record(b.dataset.r === "clean")));
+  panel.querySelector("#manual-toggle")?.addEventListener("click", (e) => {
+    panel.querySelector(".manual").hidden = false;
+    e.target.remove();
+  });
+
+  const area = panel.querySelector("#mic-area");
+  if (skill.check === "tuning") {
+    cleanup = mountTuner(area, {
+      timed: true,
+      limit: 120,
+      onDone: (secs) => {
+        const t = `${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, "0")}`;
+        record(secs <= 120, secs <= 120 ? `Tuned in ${t}` : `Tuned in ${t}. Under 2:00 passes the gate.`);
+      },
+    });
+  }
+  if (skill.check === "strings") {
+    cleanup = mountStringCheck(area, CHORDS[skill.chord], {
+      onResult: (clean, results) => {
+        const bad = results.filter((r) => !r.ok);
+        const text = clean
+          ? "Clean try: every string rang true"
+          : `Not clean: ${bad.map((r) => `${stringName(r.index)} ${r.heard ? `sounded ${r.heard}` : "didn't ring"}`).join(", ")}`;
+        record(clean, text, results);
+      },
+      previous: last?.results,
+    });
+  }
 }
 
 function ladderRungs(skill, bpm, best) {
@@ -344,6 +386,16 @@ function changesPanel(panel, skill, rerender) {
     clearInterval(timer);
     timer = null;
   };
+}
+
+// ---------- tuner ----------
+
+function renderTuner() {
+  main.innerHTML = `
+    <header class="top"><div class="wordmark">Tuner</div></header>
+    <div class="panel" id="tuner-area"></div>
+    <p class="note-under">Standard tuning, low to high: E A D G B E.</p>`;
+  cleanup = mountTuner(main.querySelector("#tuner-area"));
 }
 
 // ---------- free metronome ----------
