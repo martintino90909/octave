@@ -1,0 +1,10 @@
+{
+  "name": "octave",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A daily guitar practice path, from first chords to jazz.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
