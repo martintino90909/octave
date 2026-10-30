@@ -67,9 +67,26 @@ export function chordTargets(chord) {
     });
 }
 
+// Targets for a note sequence (scales, licks, fretboard drills). Each entry
+// is [string, fret] or { s, f, sound, legato, window, label }:
+//   sound  — the fret whose pitch should be heard (a bend from f up to sound)
+//   legato — no new pluck needed (hammer-ons, pull-offs, slides, bends)
+//   window — ms allowed to reach the note once listening starts
+export function noteTargets(notes) {
+  return notes.map((n) => {
+    const e = Array.isArray(n) ? { s: n[0], f: n[1] } : n;
+    const freq = fretFreq(e.s, e.sound ?? e.f);
+    const note = noteFromFreq(freq);
+    return {
+      index: e.s, string: STRINGS[e.s], fret: e.f, sound: e.sound ?? e.f, freq,
+      note: `${note.name}${note.octave}`, legato: Boolean(e.legato), window: e.window, label: e.label,
+    };
+  });
+}
+
 export class StringCheck {
-  constructor(targets, { windowMs = 900, waitMs = 12000, onsetRatio = 1.8, minLevel = 0.012, present = 0.55, hitsNeeded = 2 } = {}) {
-    Object.assign(this, { targets, windowMs, waitMs, onsetRatio, minLevel, present, hitsNeeded });
+  constructor(targets, { windowMs = 900, waitMs = 12000, onsetRatio = 1.8, jumpRatio = 1.5, minLevel = 0.012, present = 0.55, hitsNeeded = 2 } = {}) {
+    Object.assign(this, { targets, windowMs, waitMs, onsetRatio, jumpRatio, minLevel, present, hitsNeeded });
     this.results = [];
     this.pos = 0;
     this.armed = null;
@@ -96,11 +113,15 @@ export class StringCheck {
 
   // Is the expected note sounding? A note repeats at its own period, but so
   // does anything an octave or a fifth above it (their periods divide evenly
-  // into it), so those are ruled out first.
+  // into it), so those are ruled out. A note a semitone off also partly
+  // matches, so the expected note must match better than both neighbours.
   hears(freq, raw, probe) {
     if (!probe) return Boolean(raw && matches(raw.freq, freq));
     const p = probe(freq);
-    return p >= this.present && Math.max(probe(freq * 2), probe(freq * 3)) < p - 0.25;
+    if (p < this.present) return false;
+    const semi = 2 ** (1 / 12);
+    if (Math.max(probe(freq * semi), probe(freq / semi)) >= p) return false;
+    return Math.max(probe(freq * 2), probe(freq * 3)) < p - 0.25;
   }
 
   // reading: { raw: {freq}|null, level, now, probe(freq) → 0..1 }
@@ -108,22 +129,28 @@ export class StringCheck {
   update({ raw, level, now, probe }) {
     const t = this.current;
     if (!t) return null;
-    if (!this.armed) this.armed = { at: now, floor: level, prev: level, onsetAt: null };
+    if (!this.armed) {
+      this.armed = { at: now, floor: level, recent: [level], onsetAt: null, wasThere: probe ? probe(t.freq) : 0 };
+      // a legato note comes from the last pluck, so listening starts at once
+      if (t.legato) Object.assign(this.armed, { onsetAt: now, hits: 0, heard: {} });
+    }
     const a = this.armed;
 
     // A new pluck: the level rises well above the quietest point since this
-    // string came up, or jumps sharply from one reading to the next (a re-pluck).
-    // Only sound after a pluck counts, so the previous string ringing on can't
-    // pass this one.
+    // note came up, or jumps over the last few readings (a re-pluck while
+    // something rings), or the target note appears where it wasn't before.
+    // Only sound after a pluck counts, so a string still ringing from before
+    // can't pass this one.
     const loud = level > this.minLevel;
     const risen = loud && a.onsetAt === null && level > a.floor * this.onsetRatio;
-    const jump = loud && level > a.prev * this.onsetRatio;
-    if (risen || jump) Object.assign(a, { onsetAt: now, hits: 0, heard: {} });
+    const jump = loud && level > Math.min(...a.recent) * this.jumpRatio;
+    const appeared = loud && a.onsetAt === null && probe && a.wasThere < 0.3 && this.hears(t.freq, raw, probe);
+    if (risen || jump || appeared) Object.assign(a, { onsetAt: now, hits: 0, heard: {} });
     a.floor = Math.min(a.floor, level);
-    a.prev = level;
+    a.recent = [...a.recent, level].slice(-4);
 
     if (a.onsetAt !== null) {
-      if (now - a.onsetAt <= this.windowMs) {
+      if (now - a.onsetAt <= (t.window ?? this.windowMs)) {
         if (this.hears(t.freq, raw, probe) && ++a.hits >= this.hitsNeeded) return this.advance({ ...t, ok: true });
         if (raw && !matches(raw.freq, t.freq)) {
           // A different note is named in the octave nearest the expected one:

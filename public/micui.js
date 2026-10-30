@@ -1,13 +1,24 @@
-// The two mic screens: the tuner (also used, timed, by the Setup skill) and the
-// string-by-string chord check.
+// The mic screens: the tuner (also used, timed, by the Setup skill), the
+// string-by-string chord check, and the note-by-note sequence check.
 
 import { openMic, listen, micMessage } from "./lib/listen.js";
 import { STRINGS } from "./lib/pitch.js";
-import { TuneTracker, StringCheck, chordTargets } from "./lib/tunecheck.js";
+import { TuneTracker, StringCheck, chordTargets, noteTargets } from "./lib/tunecheck.js";
 import { keepAwake } from "./lib/metronome.js";
 
 const STRING_NAMES = ["Low E", "A", "D", "G", "B", "High E"];
 export const stringName = (index) => `${STRING_NAMES[index]} string`;
+
+const SHORT = ["E", "A", "D", "G", "B", "e"];
+const fretWords = (f) => (f === 0 ? "open" : `${f}${f === 1 ? "st" : f === 2 ? "nd" : f === 3 ? "rd" : "th"} fret`);
+
+// Plain words for one note of a sequence: "G string, 7th fret, bend up to E4".
+export function describeNote(t, hide = false) {
+  const where = hide ? `${t.note} on the ${stringName(t.index)}` : `${stringName(t.index)}, ${fretWords(t.fret)}`;
+  if (t.label) return `${where}, ${t.label} to ${t.note}`;
+  if (t.legato) return `${where}, without picking`;
+  return where;
+}
 
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -170,6 +181,86 @@ export function mountStringCheck(el, chord, { onResult, previous } = {}) {
     keepAwake(true);
     $("#s-go").textContent = "Cancel";
     $("#s-go").classList.add("stop");
+    mark();
+    stopListening = listen(mic, (reading) => {
+      if (check.update(reading)) mark();
+      if (check.finished) {
+        stop();
+        onResult?.(check.clean, check.results);
+      }
+    });
+  });
+
+  return stop;
+}
+
+// ---------- note sequence check ----------
+
+export function mountNoteCheck(el, skill, { onResult, previous } = {}) {
+  const targets = noteTargets(skill.notes);
+  const hide = Boolean(skill.hideFrets);
+  const chips = targets.map((t, k) => `
+    <li data-k="${k}" class="${t.legato ? "legato" : ""}">
+      <span class="ns">${SHORT[t.index]}</span>
+      <b class="nf">${hide ? "?" : t.fret}${t.sound !== t.fret ? "↑" : ""}</b>
+      <span class="nn">${t.note}</span>
+    </li>`);
+
+  el.innerHTML = `
+    <div class="ncheck">
+      <p class="shint" id="n-hint">${hide ? "Find each note on its string, in order." : "Play each note in order. The next one lights up when the mic hears the last."}</p>
+      <ol class="nrow" aria-label="Notes to play">${chips.join("")}</ol>
+      <p class="nkey">Top: string · middle: fret${targets.some((t) => t.legato) ? " · ⌒ means don't pick again" : ""}</p>
+      <p class="mic-error" id="n-error" role="alert" hidden></p>
+      <button type="button" class="go" id="n-go">Check with the mic</button>
+    </div>`;
+
+  const $ = (s) => el.querySelector(s);
+  let mic = null, stopListening = null, check = null;
+
+  const stop = () => {
+    stopListening?.();
+    mic?.close();
+    mic = stopListening = null;
+    keepAwake(false);
+    $("#n-go").textContent = "Check again";
+    $("#n-go").classList.remove("stop");
+  };
+
+  const mark = () => {
+    el.querySelectorAll(".nrow li").forEach((li) => {
+      const k = Number(li.dataset.k);
+      const r = check.results[k];
+      const now = check.pos === k && !check.finished;
+      li.classList.toggle("ok", Boolean(r?.ok));
+      li.classList.toggle("bad", Boolean(r && !r.ok));
+      li.classList.toggle("now", now);
+      li.querySelector(".nn").textContent = r && !r.ok ? (r.heard ? r.heard : "–") : targets[k].note;
+    });
+    const t = check.current;
+    if (t) $("#n-hint").textContent = `${t.legato ? "Now" : "Play"}: ${describeNote(t, hide)}`;
+  };
+
+  if (previous) {
+    check = { results: previous, pos: previous.length, finished: true, current: null };
+    mark();
+    $("#n-go").textContent = "Check again";
+  }
+
+  $("#n-go").addEventListener("click", async () => {
+    if (mic) return stop();
+    $("#n-error").hidden = true;
+    try {
+      mic = await openMic();
+    } catch (e) {
+      $("#n-error").textContent = micMessage(e);
+      $("#n-error").hidden = false;
+      return;
+    }
+    check = new StringCheck(targets);
+    keepAwake(true);
+    $("#n-go").textContent = "Cancel";
+    $("#n-go").classList.add("stop");
     mark();
     stopListening = listen(mic, (reading) => {
       if (check.update(reading)) mark();

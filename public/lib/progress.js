@@ -25,6 +25,23 @@ export function unitProgress(state, unit) {
   return { passed, total: unit.skills.length, done: passed === unit.skills.length };
 }
 
+// A unit opens once every gate in the unit before it is passed.
+export function unitUnlocked(state, units, index) {
+  if (index === 0) return true;
+  return unitProgress(state, units[index - 1]).done;
+}
+
+// Within an open unit, a skill opens once the skill before it is passed.
+export function skillUnlocked(state, units, unit, index) {
+  return unitUnlocked(state, units, units.indexOf(unit)) && isUnlocked(state, unit, index);
+}
+
+// The unit to work on: the first open one that isn't finished, else the last.
+export function currentUnit(state, units) {
+  const i = units.findIndex((u, k) => unitUnlocked(state, units, k) && !unitProgress(state, u).done);
+  return units[i === -1 ? units.length - 1 : i];
+}
+
 export function currentBpm(state, skill) {
   return skillState(state, skill.id).bpm ?? skill.startBpm;
 }

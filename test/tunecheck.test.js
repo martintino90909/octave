@@ -122,3 +122,94 @@ test("tuning ignores sounds nowhere near a string", () => {
   assert.equal(r.target, null);
   assert.equal(tt.startedAt, null);
 });
+
+// ---------- note sequences: picked notes, hammer-ons, slides, bends ----------
+
+import { noteTargets } from "../public/lib/tunecheck.js";
+
+// A string tone whose pitch follows a path: [{ at, freq, glide }] — a new
+// entry with pluck: true restarts the note (a fresh attack); otherwise the
+// pitch moves without one (legato), gliding over `glide` seconds if given.
+function strTone(events, seconds) {
+  const out = new Float32Array(Math.floor(seconds * SR));
+  let phase = 0, amp = 0, f = 0, from = 0, to = 0, gStart = 0, gEnd = 0, ev = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / SR;
+    while (ev < events.length && events[ev].at <= t) {
+      const e = events[ev++];
+      from = f || e.freq;
+      to = e.freq;
+      gStart = t;
+      gEnd = t + (e.glide || 0);
+      if (e.pluck) { amp = 0.5; from = to; phase = 0; }
+      if (e.stop) amp = 0;
+    }
+    f = t >= gEnd ? to : from * (to / from) ** ((t - gStart) / (gEnd - gStart));
+    phase += (2 * Math.PI * f) / SR;
+    let v = 0;
+    for (let h = 1; h <= 6; h++) v += Math.sin(h * phase) / h;
+    out[i] = amp * v * 0.5;
+    amp *= Math.exp(-1 / (1.5 * SR));
+  }
+  return out;
+}
+
+function checkNotes(notes, sig) {
+  const check = new StringCheck(noteTargets(notes));
+  run(sig, (r) => {
+    check.update(r);
+    return !check.finished;
+  });
+  return check;
+}
+
+const G = (fret) => fretFreq(3, fret);
+
+test("a picked scale passes note by note", () => {
+  const notes = [[3, 5], [3, 7], [4, 5], [4, 8]];
+  const events = notes.map(([s, f], k) => ({ at: 0.3 + k * 1.0, freq: fretFreq(s, f), pluck: true }));
+  assert.equal(checkNotes(notes, strTone(events, 5)).clean, true);
+});
+
+test("hammer-on and pull-off pass without a new pick", () => {
+  const notes = [[3, 5], { s: 3, f: 7, legato: true, window: 1500 }, { s: 3, f: 5, legato: true, window: 1500 }];
+  const sig = strTone([{ at: 0.3, freq: G(5), pluck: true }, { at: 0.9, freq: G(7) }, { at: 1.5, freq: G(5) }], 3);
+  const check = checkNotes(notes, sig);
+  assert.equal(check.clean, true, JSON.stringify(check.results.map((r) => [r.note, r.ok, r.heard])));
+});
+
+test("a missing hammer-on fails", () => {
+  const notes = [[3, 5], { s: 3, f: 7, legato: true, window: 1500 }];
+  const check = checkNotes(notes, strTone([{ at: 0.3, freq: G(5), pluck: true }], 3));
+  assert.equal(check.results[1].ok, false);
+});
+
+test("a slide passes once it arrives", () => {
+  const notes = [[3, 5], { s: 3, f: 7, legato: true, window: 1500 }];
+  const sig = strTone([{ at: 0.3, freq: G(5), pluck: true }, { at: 0.9, freq: G(7), glide: 0.15 }], 2.5);
+  assert.equal(checkNotes(notes, sig).clean, true);
+});
+
+const bendNotes = [[3, 9], [3, 7], { s: 3, f: 7, sound: 9, legato: true, window: 2500, label: "bend up" }];
+
+test("an in-tune whole-step bend passes", () => {
+  const sig = strTone([
+    { at: 0.3, freq: G(9), pluck: true },
+    { at: 1.3, freq: G(7), pluck: true },
+    { at: 1.8, freq: G(9), glide: 0.4 },
+  ], 4);
+  const check = checkNotes(bendNotes, sig);
+  assert.equal(check.clean, true, JSON.stringify(check.results.map((r) => [r.note, r.ok, r.heard])));
+});
+
+test("a bend that falls short fails and names the note it reached", () => {
+  const sig = strTone([
+    { at: 0.3, freq: G(9), pluck: true },
+    { at: 1.3, freq: G(7), pluck: true },
+    { at: 1.8, freq: G(8), glide: 0.4 },
+  ], 5);
+  const check = checkNotes(bendNotes, sig);
+  const bend = check.results[2];
+  assert.equal(bend.ok, false);
+  assert.equal(bend.heard, "D♯4");
+});
