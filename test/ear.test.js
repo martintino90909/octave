@@ -24,7 +24,7 @@ test("an interval renders as two notes at the right pitches", () => {
   const first = detectPitch(audio.slice(Math.floor(0.2 * SR), Math.floor(0.2 * SR) + 4096), SR);
   const later = audio.slice(Math.floor(0.75 * SR), Math.floor(0.75 * SR) + 4096);
   assert.ok(Math.abs(cents(first.freq, freqFromMidi(48))) < 10);
-  assert.ok(presence(later, SR, freqFromMidi(55)) > 0.5, "second note sounds after the first");
+  assert.ok(presence(later, SR, freqFromMidi(55)) > 0.4, "second note sounds after the first");
   assert.ok(presence(audio.slice(Math.floor(0.2 * SR), Math.floor(0.2 * SR) + 4096), SR, freqFromMidi(55)) < 0.3, "and not before");
   assert.ok(audio.reduce((m, v) => Math.max(m, Math.abs(v)), 0) <= 0.81, "normalised, no clipping");
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pluck, detectPitch, presence, rms, PitchSmoother, STRINGS, fretFreq } from "../public/lib/pitch.js";
+import { pluck, detectPitch, presence, prepare, rms, PitchSmoother, STRINGS, fretFreq } from "../public/lib/pitch.js";
 import { TuneTracker, StringCheck, chordTargets } from "../public/lib/tunecheck.js";
 import { CHORDS } from "../public/lib/path.js";
 
@@ -23,12 +23,11 @@ function recording(plucks, seconds) {
 function run(sig, onReading) {
   const sm = new PitchSmoother();
   for (let end = WIN; end <= sig.length; end += HOP) {
-    const frame = sig.subarray(end - WIN, end);
-    const level = rms(frame);
-    const raw = detectPitch(frame, SR);
+    const frame = prepare(sig.subarray(end - WIN, end), SR);
+    const raw = detectPitch(frame, SR, { threshold: 0.25, gate: 0.003 });
     const freq = sm.push(raw);
-    const probe = (f) => presence(frame, SR, f);
-    if (onReading({ freq, raw, level, probe, now: (end / SR) * 1000 }) === false) break;
+    const probe = (f) => presence(frame, SR, f, { gate: 0.003 });
+    if (onReading({ freq, raw, level: frame.level, probe, now: (end / SR) * 1000 }) === false) break;
   }
 }
 

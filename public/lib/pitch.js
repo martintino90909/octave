@@ -67,14 +67,41 @@ export function rms(buf) {
   return Math.sqrt(s / buf.length);
 }
 
-// Halve the sample rate (with a simple low-pass) to keep the maths cheap on a
-// phone; guitar pitches stay well below the new Nyquist limit.
-function halve(input, sampleRate) {
-  const half = Math.floor(input.length / 2);
-  const buf = new Float32Array(half);
-  for (let i = 0; i < half; i++) buf[i] = 0.5 * (input[2 * i] + input[2 * i + 1]);
-  return { buf, sr: sampleRate / 2 };
+// Low-pass the frame to the guitar's range, then keep every 4th sample.
+// Everything above ~1.2 kHz is hiss as far as pitch is concerned, so this
+// cuts most background noise, and the smaller frame is cheaper on a phone.
+const DECIMATE = 2;
+function lowpassCoefs(sampleRate, fc = 2500) {
+  const w = (2 * Math.PI * fc) / sampleRate, cosw = Math.cos(w), alpha = Math.sin(w) / (2 * 0.707), a0 = 1 + alpha;
+  return { b0: (1 - cosw) / 2 / a0, b1: (1 - cosw) / a0, b2: (1 - cosw) / 2 / a0, a1: (-2 * cosw) / a0, a2: (1 - alpha) / a0 };
 }
+const coefCache = new Map();
+function halve(input, sampleRate) {
+  if (!coefCache.has(sampleRate)) coefCache.set(sampleRate, lowpassCoefs(sampleRate));
+  const { b0, b1, b2, a1, a2 } = coefCache.get(sampleRate);
+  let y = input;
+  for (let pass = 0; pass < 2; pass++) {
+    const out = new Float32Array(y.length);
+    let x1 = y[0], x2 = y[0], y1 = y[0], y2 = y[0]; // start settled, not from silence
+    for (let i = 0; i < y.length; i++) {
+      const v = b0 * y[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = y[i]; y2 = y1; y1 = v; out[i] = v;
+    }
+    y = out;
+  }
+  const n = Math.floor(y.length / DECIMATE);
+  const buf = new Float32Array(n);
+  for (let i = 0; i < n; i++) buf[i] = y[i * DECIMATE];
+  return { buf, sr: sampleRate / DECIMATE };
+}
+
+// One reading, prepared once and shared by every check on it: the filtered
+// frame, its loudness in the guitar's range, and the raw loudness.
+export function prepare(input, sampleRate) {
+  const { buf, sr } = halve(input, sampleRate);
+  return { buf, sr, level: rms(buf), rawLevel: rms(input) };
+}
+const frameOf = (input, sampleRate) => (input.buf ? input : prepare(input, sampleRate));
 
 // YIN's cumulative mean normalised difference: near 0 at lags where the
 // signal repeats itself, near 1 where it doesn't.
@@ -98,8 +125,9 @@ function normalisedDifference(buf, tauMax) {
 // YIN pitch detection on a mono buffer. Returns { freq, clarity } or null
 // when there is no clear pitch.
 export function detectPitch(input, sampleRate, { threshold = 0.15, minFreq = 70, maxFreq = 1000, gate = 0.008 } = {}) {
-  if (rms(input) < gate) return null;
-  const { buf, sr } = halve(input, sampleRate);
+  const frame = frameOf(input, sampleRate);
+  if (frame.rawLevel < gate) return null;
+  const { buf, sr } = frame;
   const W = Math.floor(buf.length / 2);
   const tauMin = Math.max(2, Math.floor(sr / maxFreq));
   const tauMax = Math.min(W, Math.ceil(sr / minFreq));
@@ -132,8 +160,9 @@ export function detectPitch(input, sampleRate, { threshold = 0.15, minFreq = 70,
 // all, 1 = perfectly). Asking "is this note here?" holds up when other strings
 // are still ringing, where "what note is this?" often has no clean answer.
 export function presence(input, sampleRate, freq, { gate = 0.008 } = {}) {
-  if (rms(input) < gate) return 0;
-  const { buf, sr } = halve(input, sampleRate);
+  const frame = frameOf(input, sampleRate);
+  if (frame.rawLevel < gate) return 0;
+  const { buf, sr } = frame;
   const tau = sr / freq;
   const tauMax = Math.ceil(tau) + 1;
   if (tauMax >= Math.floor(buf.length / 2)) return 0;

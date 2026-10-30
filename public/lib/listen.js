@@ -2,7 +2,7 @@
 // off (it would distort pitch), then reads pitch and loudness ~25 times a second.
 
 import { audio } from "./metronome.js";
-import { detectPitch, presence, rms, PitchSmoother } from "./pitch.js";
+import { detectPitch, presence, prepare, PitchSmoother } from "./pitch.js";
 
 export class MicError extends Error {}
 
@@ -60,11 +60,13 @@ export function listen(mic, onReading, { every = 40, smoother = new PitchSmoothe
   const tick = () => {
     if (stopped) return;
     mic.analyser.getFloatTimeDomainData(buf);
-    const level = rms(buf);
-    const raw = detectPitch(buf, mic.ac.sampleRate, { threshold: 0.25, gate: 0.003 });
+    // filter once per reading; loudness is measured in the guitar's range so
+    // background hiss doesn't hide a pick
+    const frame = prepare(buf, mic.ac.sampleRate);
+    const raw = detectPitch(frame, mic.ac.sampleRate, { threshold: 0.25, gate: 0.003 });
     const freq = smoother.push(raw);
-    const probe = (f) => presence(buf, mic.ac.sampleRate, f, { gate: 0.003 });
-    onReading({ freq, raw, level, now: performance.now(), probe });
+    const probe = (f) => presence(frame, mic.ac.sampleRate, f, { gate: 0.003 });
+    onReading({ freq, raw, level: frame.level, now: performance.now(), probe });
     setTimeout(tick, every);
   };
   tick();

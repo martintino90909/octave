@@ -85,8 +85,12 @@ export function noteTargets(notes) {
 }
 
 export class StringCheck {
-  constructor(targets, { windowMs = 900, waitMs = 12000, onsetRatio = 1.8, jumpRatio = 1.5, minLevel = 0.006, present = 0.55, hitsNeeded = 2 } = {}) {
-    Object.assign(this, { targets, windowMs, waitMs, onsetRatio, jumpRatio, minLevel, present, hitsNeeded });
+// Defaults tuned on simulated phone-mic takes (test/phone-sim.js): clean,
+// fast, short-ringing and noisy playing, scored on correct notes passed and
+// wrong frets caught. Chord strings ring together, which dilutes every
+// reading, so "present" is low; the semitone-neighbour test catches wrong frets.
+  constructor(targets, { windowMs = 800, waitMs = 12000, onsetRatio = 1.8, jumpRatio = 1.5, minLevel = 0.001, present = 0.35, rise = 0.15, octaveMargin = 0.2, hitsNeeded = 2 } = {}) {
+    Object.assign(this, { targets, windowMs, waitMs, onsetRatio, jumpRatio, minLevel, present, rise, octaveMargin, hitsNeeded });
     this.results = [];
     this.pos = 0;
     this.armed = null;
@@ -121,7 +125,7 @@ export class StringCheck {
     if (p < this.present) return false;
     const semi = 2 ** (1 / 12);
     if (Math.max(probe(freq * semi), probe(freq / semi)) >= p) return false;
-    return Math.max(probe(freq * 2), probe(freq * 3)) < p - 0.25;
+    return Math.max(probe(freq * 2), probe(freq * 3)) < p - this.octaveMargin;
   }
 
   // reading: { raw: {freq}|null, level, now, probe(freq) → 0..1 }
@@ -130,7 +134,7 @@ export class StringCheck {
     const t = this.current;
     if (!t) return null;
     if (!this.armed) {
-      this.armed = { at: now, floor: level, recent: [level], onsetAt: null, wasThere: probe ? probe(t.freq) : 0 };
+      this.armed = { at: now, floor: level, recent: [level], onsetAt: null, recentP: [] };
       // a legato note comes from the last pluck, so listening starts at once
       if (t.legato) Object.assign(this.armed, { onsetAt: now, hits: 0, heard: {} });
     }
@@ -144,7 +148,12 @@ export class StringCheck {
     const loud = level > this.minLevel;
     const risen = loud && a.onsetAt === null && level > a.floor * this.onsetRatio;
     const jump = loud && level > Math.min(...a.recent) * this.jumpRatio;
-    const appeared = loud && a.onsetAt === null && probe && a.wasThere < 0.3 && this.hears(t.freq, raw, probe);
+    // the target note itself gets clearly stronger: a pick of that note even
+    // when other strings keep the overall loudness level
+    const p = probe ? probe(t.freq) : 0;
+    const appeared = loud && a.onsetAt === null && probe && a.recentP.length > 0 &&
+      p > Math.min(...a.recentP) + this.rise && this.hears(t.freq, raw, probe);
+    a.recentP = [...a.recentP, p].slice(-4);
     if (risen || jump || appeared) Object.assign(a, { onsetAt: now, hits: 0, heard: {} });
     a.floor = Math.min(a.floor, level);
     a.recent = [...a.recent, level].slice(-4);
@@ -152,12 +161,29 @@ export class StringCheck {
     if (a.onsetAt !== null) {
       if (now - a.onsetAt <= (t.window ?? this.windowMs)) {
         if (this.hears(t.freq, raw, probe) && ++a.hits >= this.hitsNeeded) return this.advance({ ...t, ok: true });
+        // Name the likely mistake first: a fret or two either side, or the
+        // same note an octave up. These are checked directly, which works even
+        // while other strings ring and blur the overall pitch reading.
+        const want = Math.round(midiFromFreq(t.freq));
+        if (probe) {
+          const p0 = probe(t.freq);
+          let best = null;
+          for (const step of [-2, -1, 1, 2, 12]) {
+            const q = probe(t.freq * 2 ** (step / 12));
+            const beats = step === 12 ? q >= p0 - this.octaveMargin : q > p0;
+            if (q >= this.present && beats && (!best || q > best.q)) best = { q, step };
+          }
+          if (best) {
+            const key = noteName(want + best.step);
+            a.heard[key] = (a.heard[key] || 0) + 1;
+            return null;
+          }
+        }
         if (raw && !matches(raw.freq, t.freq)) {
           // A different note is named in the octave nearest the expected one:
           // detectors often slip an octave, but the note name itself is reliable.
           // The same note in another octave keeps its octave, since that's the mistake.
           let midi = Math.round(midiFromFreq(raw.freq));
-          const want = Math.round(midiFromFreq(t.freq));
           if ((midi - want) % 12 !== 0) {
             while (midi - want > 6) midi -= 12;
             while (want - midi > 6) midi += 12;
