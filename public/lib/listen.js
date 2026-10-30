@@ -24,13 +24,27 @@ export async function openMic() {
   const source = ac.createMediaStreamSource(stream);
   const analyser = ac.createAnalyser();
   analyser.fftSize = 4096;
+  // Safari only processes audio that ends up at the speakers, so the mic is
+  // routed there through a silent gain; otherwise the analyser reads zeros.
+  const sink = ac.createGain();
+  sink.gain.value = 0;
   source.connect(analyser);
+  analyser.connect(sink);
+  sink.connect(ac.destination);
+  // switching the iPhone's audio session can leave the context paused
+  if (ac.state !== "running") {
+    try {
+      await ac.resume();
+    } catch {}
+  }
   return {
     ac,
     analyser,
     close() {
       stream.getTracks().forEach((t) => t.stop());
       source.disconnect();
+      analyser.disconnect();
+      sink.disconnect();
       try {
         if (navigator.audioSession) navigator.audioSession.type = "playback";
       } catch {}
@@ -47,9 +61,9 @@ export function listen(mic, onReading, { every = 40, smoother = new PitchSmoothe
     if (stopped) return;
     mic.analyser.getFloatTimeDomainData(buf);
     const level = rms(buf);
-    const raw = detectPitch(buf, mic.ac.sampleRate, { threshold: 0.25 });
+    const raw = detectPitch(buf, mic.ac.sampleRate, { threshold: 0.25, gate: 0.003 });
     const freq = smoother.push(raw);
-    const probe = (f) => presence(buf, mic.ac.sampleRate, f);
+    const probe = (f) => presence(buf, mic.ac.sampleRate, f, { gate: 0.003 });
     onReading({ freq, raw, level, now: performance.now(), probe });
     setTimeout(tick, every);
   };

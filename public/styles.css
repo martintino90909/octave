@@ -316,6 +316,10 @@ main {
 #mic-area { margin-top: 16px; }
 .linkish { display: block; margin: 14px auto 0; border: 0; background: none; color: var(--muted); text-decoration: underline; font-size: 15px; padding: 8px; }
 
+/* live mic level */
+.level { height: 8px; margin-top: 14px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.level i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--good); transition: width 60ms linear; }
+
 /* note sequence check */
 .ncheck .shint { min-height: 2.9em; }
 .nrow { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }

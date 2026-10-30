@@ -85,7 +85,7 @@ export function noteTargets(notes) {
 }
 
 export class StringCheck {
-  constructor(targets, { windowMs = 900, waitMs = 12000, onsetRatio = 1.8, jumpRatio = 1.5, minLevel = 0.012, present = 0.55, hitsNeeded = 2 } = {}) {
+  constructor(targets, { windowMs = 900, waitMs = 12000, onsetRatio = 1.8, jumpRatio = 1.5, minLevel = 0.006, present = 0.55, hitsNeeded = 2 } = {}) {
     Object.assign(this, { targets, windowMs, waitMs, onsetRatio, jumpRatio, minLevel, present, hitsNeeded });
     this.results = [];
     this.pos = 0;

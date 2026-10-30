@@ -213,3 +213,17 @@ test("a bend that falls short fails and names the note it reached", () => {
   assert.equal(bend.ok, false);
   assert.equal(bend.heard, "D♯4");
 });
+
+test("quiet playing (a phone mic at arm's length) still passes, with the app's mic gates", () => {
+  const plucks = emTargets.map((t, k) => ({ at: 0.3 + k * 1.2, freq: t.freq, gain: 0.08 }));
+  const sig = recording(plucks, 8);
+  const check = new StringCheck(emTargets);
+  const sm = new PitchSmoother();
+  for (let end = WIN; end <= sig.length && !check.finished; end += HOP) {
+    const frame = sig.subarray(end - WIN, end);
+    const raw = detectPitch(frame, SR, { threshold: 0.25, gate: 0.003 });
+    check.update({ raw, freq: sm.push(raw), level: rms(frame), now: (end / SR) * 1000, probe: (f) => presence(frame, SR, f, { gate: 0.003 }) });
+  }
+  assert.ok(rms(sig.subarray(0.5 * SR, 0.5 * SR + WIN)) < 0.012, "this really is quieter than the old threshold");
+  assert.equal(check.clean, true, JSON.stringify(check.results.map((r) => [r.note, r.ok, r.heard])));
+});

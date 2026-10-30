@@ -20,6 +20,31 @@ export function describeNote(t, hide = false) {
   return where;
 }
 
+// A live input bar, and a warning when no sound at all reaches the app.
+function levelMeter(el) {
+  const bar = el.querySelector(".level i");
+  const warn = el.querySelector(".no-sound");
+  let started = null, loudest = 0;
+  return {
+    update({ level, now }) {
+      started ??= now;
+      loudest = Math.max(loudest, level);
+      bar.style.width = `${Math.min(100, Math.sqrt(level / 0.15) * 100)}%`;
+      warn.hidden = !(now - started > 4000 && loudest < 0.001);
+    },
+    reset() {
+      started = null;
+      loudest = 0;
+      bar.style.width = "0%";
+      warn.hidden = true;
+    },
+  };
+}
+
+const METER = `
+  <div class="level" aria-hidden="true"><i></i></div>
+  <p class="mic-error no-sound" role="alert" hidden>No sound is reaching Octave from the mic. Fully close Octave (swipe it away) and reopen it, and check nothing else, like a call, is using the mic.</p>`;
+
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 // ---------- tuner ----------
@@ -38,11 +63,13 @@ export function mountTuner(el, { timed = false, limit = 120, onDone } = {}) {
       <ol class="tstrings" aria-label="Strings tuned">
         ${STRINGS.map((s) => `<li data-n="${s.n}"><b>${s.name}</b><small>${s.n === 6 ? "low" : s.n === 1 ? "high" : ""}</small></li>`).join("")}
       </ol>
+      ${METER}
       <p class="mic-error" id="t-error" role="alert" hidden></p>
       <button type="button" class="go" id="t-go">${timed ? "Start timed tuning" : "Start tuner"}</button>
     </div>`;
 
   const $ = (s) => el.querySelector(s);
+  const meter = levelMeter(el);
   let mic = null, stopListening = null, tracker = null, timer = null;
 
   const stop = () => {
@@ -90,6 +117,7 @@ export function mountTuner(el, { timed = false, limit = 120, onDone } = {}) {
       return;
     }
     tracker = new TuneTracker();
+    meter.reset();
     keepAwake(true);
     $("#t-go").textContent = "Stop";
     $("#t-go").classList.add("stop");
@@ -100,6 +128,7 @@ export function mountTuner(el, { timed = false, limit = 120, onDone } = {}) {
       }, 250);
     }
     stopListening = listen(mic, (reading) => {
+      meter.update(reading);
       const r = tracker.update(reading);
       show(r);
       if (tracker.done) {
@@ -131,11 +160,13 @@ export function mountStringCheck(el, chord, { onResult, previous } = {}) {
     <div class="scheck">
       <p class="shint" id="s-hint">Hold ${chord.name}. Pluck each string on its own, low to high${muted.length ? ", skipping the ones marked" : ""}.</p>
       <ol class="srows">${rows.join("")}</ol>
+      ${METER}
       <p class="mic-error" id="s-error" role="alert" hidden></p>
       <button type="button" class="go" id="s-go">Check with the mic</button>
     </div>`;
 
   const $ = (s) => el.querySelector(s);
+  const meter = levelMeter(el);
   let mic = null, stopListening = null, check = null;
 
   const stop = () => {
@@ -178,11 +209,13 @@ export function mountStringCheck(el, chord, { onResult, previous } = {}) {
       return;
     }
     check = new StringCheck(targets);
+    meter.reset();
     keepAwake(true);
     $("#s-go").textContent = "Cancel";
     $("#s-go").classList.add("stop");
     mark();
     stopListening = listen(mic, (reading) => {
+      meter.update(reading);
       if (check.update(reading)) mark();
       if (check.finished) {
         stop();
@@ -211,11 +244,13 @@ export function mountNoteCheck(el, skill, { onResult, previous } = {}) {
       <p class="shint" id="n-hint">${hide ? "Find each note on its string, in order." : "Play each note in order. The next one lights up when the mic hears the last."}</p>
       <ol class="nrow" aria-label="Notes to play">${chips.join("")}</ol>
       <p class="nkey">Top: string · middle: fret${targets.some((t) => t.legato) ? " · ⌒ means don't pick again" : ""}</p>
+      ${METER}
       <p class="mic-error" id="n-error" role="alert" hidden></p>
       <button type="button" class="go" id="n-go">Check with the mic</button>
     </div>`;
 
   const $ = (s) => el.querySelector(s);
+  const meter = levelMeter(el);
   let mic = null, stopListening = null, check = null;
 
   const stop = () => {
@@ -258,11 +293,13 @@ export function mountNoteCheck(el, skill, { onResult, previous } = {}) {
       return;
     }
     check = new StringCheck(targets);
+    meter.reset();
     keepAwake(true);
     $("#n-go").textContent = "Cancel";
     $("#n-go").classList.add("stop");
     mark();
     stopListening = listen(mic, (reading) => {
+      meter.update(reading);
       if (check.update(reading)) mark();
       if (check.finished) {
         stop();
