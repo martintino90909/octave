@@ -305,9 +305,19 @@ export function voice(freq, sampleRate, seconds, { decay = 0.996, seed = 1, brig
 
 const MAX_RING = 3.2; // seconds a note can ring before it's cut anyway
 const RELEASE = 0.03;
+const REC_GAIN = 2.8; // brings recorded notes up to the synth's level, so clicks keep their balance
+
+// One-pole low-pass in place: lower `a` (0..1) is darker.
+function darken(x, a) {
+  let y = 0;
+  for (let i = 0; i < x.length; i++) x[i] = y += a * (x[i] - y);
+  return x;
+}
 
 // Mono samples for a score, peak-normalised to `peak`.
-export function renderScore(score, sampleRate, { peak = 0.8 } = {}) {
+// bank: optional recorded notes, a Map of MIDI note → Float32Array at
+// `sampleRate` (see demoplay.js). Notes it doesn't have fall back to the synth.
+export function renderScore(score, sampleRate, { peak = 0.8, bank = null } = {}) {
   const out = new Float32Array(Math.ceil(score.length * sampleRate) + 1);
   const add = (start, samples, gain) => {
     const at = Math.floor(start * sampleRate);
@@ -319,14 +329,26 @@ export function renderScore(score, sampleRate, { peak = 0.8 } = {}) {
     if (ev.kind === "pluck") {
       const ring = Math.min(MAX_RING, (ev.until ?? ev.t + MAX_RING) - ev.t, score.length - ev.t);
       if (ring <= 0) continue;
-      const samples = voice(freqOf(ev.midi), sampleRate, ring + RELEASE, { seed: 1 + (seed % 100000), decay: ev.decay ?? 0.996, bright: ev.soft ? 0.25 : 0.55 });
-      const rel = Math.floor(RELEASE * sampleRate);
-      for (let i = 0; i < rel && i < samples.length; i++) samples[samples.length - 1 - i] *= i / rel;
+      const len = Math.floor((ring + RELEASE) * sampleRate);
+      const rec = bank?.get(ev.midi);
+      let samples;
+      if (rec) {
+        samples = rec.slice(0, Math.min(len, rec.length));
+        for (let i = 0; i < samples.length; i++) samples[i] *= REC_GAIN;
+        if (ev.decay !== undefined) darken(samples, 0.12); // palm-muted: dull and short
+        else if (ev.soft) darken(samples, 0.3);
+        else if (ev.gain < 0.7) darken(samples, 0.55); // up strums catch the strings lighter
+      } else {
+        samples = voice(freqOf(ev.midi), sampleRate, ring + RELEASE, { seed: 1 + (seed % 100000), decay: ev.decay ?? 0.996, bright: ev.soft ? 0.25 : 0.55 });
+      }
+      const rel = Math.min(Math.floor(RELEASE * sampleRate), samples.length);
+      for (let i = 0; i < rel; i++) samples[samples.length - 1 - i] *= i / rel;
       if (ev.soft) {
         const att = Math.floor(0.012 * sampleRate);
         for (let i = 0; i < att && i < samples.length; i++) samples[i] *= i / att;
       }
-      add(ev.t, samples, ev.gain);
+      // a little variation in how hard each string is hit
+      add(ev.t, samples, ev.gain * (0.92 + (seed % 1000) / 6250));
     } else if (ev.kind === "click") {
       const len = Math.floor(0.03 * sampleRate);
       const f = ev.accent ? 1568 : 1046;
@@ -334,16 +356,24 @@ export function renderScore(score, sampleRate, { peak = 0.8 } = {}) {
       for (let i = 0; i < len; i++) s[i] = Math.sin((2 * Math.PI * f * i) / sampleRate) * (1 - i / len) ** 2;
       add(ev.t, s, 0.5);
     } else if (ev.kind === "chuck") {
-      // a short, dull burst: strings muted by the fretting hand
+      // a short, dull thud: strings muted by the fretting hand
       const len = Math.floor(0.06 * sampleRate);
       const s = new Float32Array(len);
-      let r = seed, lp = 0;
-      for (let i = 0; i < len; i++) {
-        r = (r * 16807) % 2147483647;
-        lp += 0.35 * ((r / 2147483647) * 2 - 1 - lp);
-        s[i] = lp * Math.exp((-i / len) * 6);
+      const notes = [40, 45, 50, 55].map((m) => bank?.get(m)).filter(Boolean);
+      if (notes.length) {
+        for (const n of notes) for (let i = 0; i < len && i < n.length; i++) s[i] += n[i] * REC_GAIN * 0.6;
+        darken(s, 0.1);
+        for (let i = 0; i < len; i++) s[i] *= Math.exp((-i / len) * 5);
+        add(ev.t, s, 2.2);
+      } else {
+        let r = seed, lp = 0;
+        for (let i = 0; i < len; i++) {
+          r = (r * 16807) % 2147483647;
+          lp += 0.35 * ((r / 2147483647) * 2 - 1 - lp);
+          s[i] = lp * Math.exp((-i / len) * 6);
+        }
+        add(ev.t, s, 1.6);
       }
-      add(ev.t, s, 1.6);
     }
   }
   let max = 0;

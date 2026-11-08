@@ -6,11 +6,11 @@ import {
 import { load, save } from "./lib/store.js";
 import { chordSvg } from "./lib/chord.js";
 import { Metronome, audio, beep, keepAwake } from "./lib/metronome.js";
-import { EAR, makeQuestion, render as renderEar } from "./lib/ear.js";
+import { EAR, makeQuestion, toScore as earScore } from "./lib/ear.js";
 import { noteTargets } from "./lib/tunecheck.js";
 import { mountTuner, mountStringCheck, mountNoteCheck, describeNote, stringName } from "./micui.js";
 import { demoFor, guideFor, strumDemo } from "./lib/demo.js";
-import { playScore, stopDemo } from "./lib/demoplay.js";
+import { playScore, stopDemo, loadBank } from "./lib/demoplay.js";
 import { SONGS, findSong, songChords, sectionSkill, listenUrl } from "./lib/songs.js";
 
 let state = load();
@@ -226,6 +226,7 @@ function mountDemo(el, skill, panel, { bpm, note } = {}) {
   const d = demoFor(skill, CHORDS, { bpm });
   const listen = skill.listen;
   if (!d && !listen) return el.remove();
+  if (d) loadBank(); // fetch the guitar notes while you read
   // default to the goal tempo: the demo is what you're aiming for
   let speed = d?.speeds ? d.speeds[d.speeds.length - 1] : null;
   el.innerHTML = `
@@ -273,7 +274,7 @@ function mountDemo(el, skill, panel, { bpm, note } = {}) {
     btn.innerHTML = `${ICON_STOP}<span>Stop</span>`;
     btn.classList.add("playing");
     panel?.view?.prepare?.();
-    handle = playScore(d.score(speed), { onCue, onEnd: reset });
+    handle = playScore(d.score(speed), { onCue, onEnd: reset, onLoading: () => (cap.textContent = "Loading guitar sounds…") });
   });
   el.querySelectorAll("[data-bpm]").forEach((b) =>
     b.addEventListener("click", () => {
@@ -382,6 +383,7 @@ function ladderPanel(panel, skill, rerender) {
   const counts = tokens ? countLabels(tokens.length, skill.beatsPerBar) : [];
   const picking = tokens?.some((t) => /^[T1-6]$/.test(t));
   const hasGuide = !!guideFor(skill, CHORDS, bpm, 1);
+  if (hasGuide) loadBank();
   state.prefs ||= {};
   panel.innerHTML = `
     <div class="panel ladder ${prog ? "has-prog" : ""}">
@@ -647,16 +649,8 @@ function earPanel(panel, skill, rerender) {
       </div>
     </div>`;
 
-  const play = (question) => {
-    const ac = audio();
-    const samples = renderEar(question, ac.sampleRate);
-    const buf = ac.createBuffer(1, samples.length, ac.sampleRate);
-    buf.copyToChannel(samples, 0);
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-    src.connect(ac.destination);
-    src.start();
-  };
+  loadBank();
+  const play = (question) => playScore(earScore(question));
 
   panel.querySelector("#play").addEventListener("click", () => {
     play(q);

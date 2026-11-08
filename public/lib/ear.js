@@ -30,6 +30,17 @@ export function makeQuestion(options, rand = Math.random) {
   };
 }
 
+// A question as a demo score (demo.js), so it plays with the recorded guitar.
+export function toScore(question) {
+  const gap = question.kind === "interval" ? 0.7 : 0.045;
+  const length = (question.midis.length - 1) * gap + 2.2;
+  return {
+    events: question.midis.map((midi, k) => ({ t: k * gap, kind: "pluck", s: k, midi, gain: 1 })),
+    cues: [],
+    length,
+  };
+}
+
 // Mono samples for a question: intervals as two separate notes, chords as a strum.
 export function render(question, sampleRate) {
   const gap = question.kind === "interval" ? 0.7 : 0.045;

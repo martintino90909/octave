@@ -135,3 +135,18 @@ test("a retuned song's demo plays the retuned string", () => {
   const top = score.events.find((e) => e.kind === "pluck" && e.s === 5);
   assert.equal(top.midi, 64 - 2 + 6, "high E down to D, capo 6");
 });
+
+test("recorded notes are used when the bank has them, the synth when it doesn't", () => {
+  // a fake bank: pure sines, so we can tell them from the synth
+  const sine = (midi) => Float32Array.from({ length: SR * 2 }, (_, i) => 0.2 * Math.sin((2 * Math.PI * freqFromMidi(midi) * i) / SR));
+  const bank = new Map([[57, sine(57)]]);
+  const score = { events: [{ t: 0, kind: "pluck", s: 3, midi: 57, gain: 1, until: 0.9 }, { t: 1, kind: "pluck", s: 1, midi: 45, gain: 1, until: 2 }], cues: [], length: 2.5 };
+  const audio = renderScore(score, SR, { bank });
+  const early = window(audio, 0.5);
+  // a pure sine has no second harmonic; a plucked string does
+  assert.ok(presence(early, SR, freqFromMidi(57)) > 0.5);
+  assert.ok(presence(early, SR, freqFromMidi(69)) < 0.05, "the A3 came from the bank");
+  const p = detectPitch(window(audio, 1.3), SR);
+  assert.ok(Math.abs(cents(p.freq, freqFromMidi(45))) < 15, "the A2 fell back to the synth");
+  assert.ok(peak(audio) <= 0.81);
+});

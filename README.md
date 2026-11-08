@@ -23,7 +23,7 @@ Drill types:
 - *Ear training:* intervals, major or minor, and which kind of 7th, played by Octave.
 - *Self-rated:* the few things a phone can't judge (vibrato, playing along with a record, learning a hook by ear).
 
-**Demos: hear what you're aiming for.** Every drill with something to play has a *Hear it* button, played by Octave's own plucked-string synth (no audio files):
+**Demos: hear what you're aiming for.** Every drill with something to play has a *Hear it* button. Demos are mixed from recorded steel-string acoustic notes in `public/samples/guitar` (about 0.9 MB, loaded on first use, with a little room reverb); if they can't load, a plucked-string synth stands in.
 
 - *Chords:* strummed, then string by string, so you can compare each string with yours. Tap any chord box to hear it.
 - *Strums and progressions:* a 1-bar count-in, then the pattern with the beat, strum arrow and chord lighting up in time. Pick the tempo: the start of the ladder or the goal.
@@ -54,7 +54,8 @@ Progress is saved on the phone for now. Cloud storage (Octave's own, behind a pa
 | Tuner, chord-check and note-check screens | `public/micui.js` |
 | Ear-training questions and sounds | `public/lib/ear.js` |
 | Demos: score builders and the plucked-string synth | `public/lib/demo.js` |
-| Demo playback and live highlighting | `public/lib/demoplay.js` |
+| Demo playback, recorded-note loading and live highlighting | `public/lib/demoplay.js` |
+| Recorded guitar notes (MIDI 40–84, FluidR3, MIT) | `public/samples/guitar/` |
 | The songbook | `public/lib/songs.js` |
 | Worker entry (serves the app) | `src/worker.js` |
 | Cloudflare config | `wrangler.jsonc` |
