@@ -18,7 +18,8 @@ export function baseFret(chord) {
   return Math.min(...fretted);
 }
 
-export function chordSvg(chord, label = "") {
+// names: the six open-string names under the box, for retuned songs.
+export function chordSvg(chord, label = "", names = NAMES) {
   const x = (i) => LEFT + i * GAP;
   const base = baseFret(chord);
   const row = (fret) => NUT + (fret - base + 0.5) * FRET;
@@ -41,7 +42,7 @@ export function chordSvg(chord, label = "") {
   }
   for (let i = 0; i < 6; i++) {
     parts.push(`<line x1="${x(i)}" x2="${x(i)}" y1="${NUT}" y2="${NUT + FRETS * FRET}" class="string"/>`);
-    parts.push(`<text x="${x(i)}" y="${NUT + FRETS * FRET + 20}" class="sname">${NAMES[i]}</text>`);
+    parts.push(`<text x="${x(i)}" y="${NUT + FRETS * FRET + 20}" class="sname">${names[i]}</text>`);
     const fret = chord.frets[i];
     const underBarre = barre && fret === barre.fret && i >= barre.from && i <= barre.to;
     if (fret < 0) {

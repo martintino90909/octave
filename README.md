@@ -23,6 +23,17 @@ Drill types:
 - *Ear training:* intervals, major or minor, and which kind of 7th, played by Octave.
 - *Self-rated:* the few things a phone can't judge (vibrato, playing along with a record, learning a hook by ear).
 
+**Demos: hear what you're aiming for.** Every drill with something to play has a *Hear it* button, played by Octave's own plucked-string synth (no audio files):
+
+- *Chords:* strummed, then string by string, so you can compare each string with yours. Tap any chord box to hear it.
+- *Strums and progressions:* a 1-bar count-in, then the pattern with the beat, strum arrow and chord lighting up in time. Pick the tempo: the start of the ladder or the goal.
+- *Changes:* clean switches at the gate pace.
+- *Scales, licks and bends:* every note in order. *Tuning:* the six open strings.
+- *Guide guitar:* tick it on a tempo run and the demo plays along under the metronome, at your tempo.
+- Song-based skills (E85, Tore Up, Autumn Leaves) link to the record on Spotify.
+
+**Songs tab.** Acoustic songs outside the path: Yellow, Wonderwall, Knockin' on Heaven's Door, Stand By Me, A Horse with No Name, Wish You Were Here, Hallelujah, Exit Music (For a Film), Iris, Need 2 and Sparks. Each has its capo and tuning, chord boxes, sections, a demo at the record's key (untick the capo box to hear it at yours), a tempo ladder up to the record's speed, and a Spotify link. Every song is open; a tag says which unit teaches what it needs. Demos play chords only, not melodies. Charts follow common arrangements and tempos are approximate, so check them against the record.
+
 Also: tuner, free metronome, minutes practised today and a day streak. Installable to the iPhone home screen.
 
 Progress is saved on the phone for now. Cloud storage (Octave's own, behind a passcode) arrives with build step 3.
@@ -42,11 +53,14 @@ Progress is saved on the phone for now. Cloud storage (Octave's own, behind a pa
 | Mic input | `public/lib/listen.js` |
 | Tuner, chord-check and note-check screens | `public/micui.js` |
 | Ear-training questions and sounds | `public/lib/ear.js` |
+| Demos: score builders and the plucked-string synth | `public/lib/demo.js` |
+| Demo playback and live highlighting | `public/lib/demoplay.js` |
+| The songbook | `public/lib/songs.js` |
 | Worker entry (serves the app) | `src/worker.js` |
 | Cloudflare config | `wrangler.jsonc` |
 | Tests | `test/` (run `npm test`); mic logic is tested on simulated plucked strings |
 
-To add a unit, add it to `UNITS` in `public/lib/path.js`. Any new chord goes in `CHORDS` in the same file.
+To add a unit, add it to `UNITS` in `public/lib/path.js`. Any new chord goes in `CHORDS` in the same file. To add a song, add it to `SONGS` in `public/lib/songs.js` (new shapes go in `CHORDS` too, and the chord test wants their notes).
 
 ## Deploying
 

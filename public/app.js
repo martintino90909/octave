@@ -9,6 +9,9 @@ import { Metronome, audio, beep, keepAwake } from "./lib/metronome.js";
 import { EAR, makeQuestion, render as renderEar } from "./lib/ear.js";
 import { noteTargets } from "./lib/tunecheck.js";
 import { mountTuner, mountStringCheck, mountNoteCheck, describeNote, stringName } from "./micui.js";
+import { demoFor, guideFor, strumDemo } from "./lib/demo.js";
+import { playScore, stopDemo } from "./lib/demoplay.js";
+import { SONGS, findSong, songChords, sectionSkill, listenUrl } from "./lib/songs.js";
 
 let state = load();
 const main = document.getElementById("main");
@@ -37,16 +40,19 @@ function toast(text) {
 function route() {
   cleanup?.();
   cleanup = null;
+  stopDemo();
   keepAwake(false);
   const hash = location.hash.replace(/^#/, "") || "/";
-  const [, page, id] = hash.split("/");
+  const [, page, id, sub] = hash.split("/");
   document.querySelectorAll(".tabs a").forEach((a) => {
-    const on = (page || "path") === a.dataset.tab || ((page === "skill" || page === "unit") && a.dataset.tab === "path");
+    const on = (page || "path") === a.dataset.tab || ((page === "skill" || page === "unit") && a.dataset.tab === "path") || (page === "song" && a.dataset.tab === "songs");
     a.toggleAttribute("aria-current", on);
   });
   if (page === "skill" && id) renderSkill(id);
   else if (page === "metronome") renderMetronome();
   else if (page === "tuner") renderTuner();
+  else if (page === "songs") renderSongs();
+  else if (page === "song" && id) renderSong(id, sub);
   else renderPath(page === "unit" ? id : null);
   main.scrollTop = 0;
 }
@@ -156,8 +162,9 @@ function renderSkill(id) {
           : following ? `<a href="#/unit/${following.id}">Unit ${unit.number} done. On to unit ${following.number}: ${esc(following.title)}</a>`
           : `<a href="#/">Back to the path</a>`}
       </div>` : ""}
+    <section class="demo" id="demo"></section>
     <div id="panel"></div>
-    ${chords.length ? `<div class="chords">${chords.map((c) => `<figure>${chordSvg(CHORDS[c])}<figcaption>${esc(CHORDS[c].name)}</figcaption></figure>`).join("")}</div>` : ""}
+    ${chordFigures(chords)}
     <section class="how">
       <h2>How to do it</h2>
       <ol>${skill.how.map((h) => `<li>${esc(h)}</li>`).join("")}</ol>
@@ -176,6 +183,108 @@ function renderSkill(id) {
   if (skill.type === "ladder") ladderPanel(panel, skill, rerender);
   if (skill.type === "changes") changesPanel(panel, skill, rerender);
   if (skill.type === "ear") earPanel(panel, skill, rerender);
+  mountDemo(main.querySelector("#demo"), skill, panel, { bpm: skill.type === "ladder" ? currentBpm(state, skill) : null });
+  wireChordTaps(skill);
+}
+
+// ---------- demos ----------
+
+const STRING_NAMES = ["Low E", "A", "D", "G", "B", "High E"];
+const PC = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const OPEN = [40, 45, 50, 55, 59, 64];
+const ICON_PLAY = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>`;
+const ICON_STOP = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor"/></svg>`;
+
+// Open-string names under chord boxes, for retuned songs.
+const stringNames = (tuning) => OPEN.map((m, i) => PC[(m + (tuning?.[i] || 0)) % 12]);
+
+function chordFigures(ids, tuning) {
+  if (!ids.length) return "";
+  const names = stringNames(tuning);
+  return `<div class="chords">${ids.map((c) => `<figure data-chord="${c}" role="button" tabindex="0" aria-label="Hear ${esc(CHORDS[c].name)}">
+    ${chordSvg(CHORDS[c], "", names)}<figcaption>${esc(CHORDS[c].name)}</figcaption></figure>`).join("")}</div>
+    <p class="tap-hint">Tap a chord box to hear it</p>`;
+}
+
+// Tapping a chord box strums it, at the song's capo and tuning if it has them.
+function wireChordTaps(skill) {
+  main.querySelectorAll(".chords figure[data-chord]").forEach((fig) => {
+    const play = () => {
+      fig.classList.add("sounding");
+      playScore(strumDemo(CHORDS[fig.dataset.chord], { capo: skill.capo || 0, tuning: skill.tuning }), {
+        onEnd: () => fig.classList.remove("sounding"),
+      });
+    };
+    fig.addEventListener("click", play);
+    fig.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), play()));
+  });
+}
+
+// The "Hear it" card: plays the skill's demo and lights up the screen in time.
+// panel.view, when a ladder panel set one, shows the beat, strum and chord.
+function mountDemo(el, skill, panel, { bpm, note } = {}) {
+  const d = demoFor(skill, CHORDS, { bpm });
+  const listen = skill.listen;
+  if (!d && !listen) return el.remove();
+  // default to the goal tempo: the demo is what you're aiming for
+  let speed = d?.speeds ? d.speeds[d.speeds.length - 1] : null;
+  el.innerHTML = `
+    ${d ? `<div class="demo-row">
+      <button type="button" class="demo-play" id="demo-play">${ICON_PLAY}<span>Hear it</span></button>
+      ${d.speeds?.length > 1 ? `<div class="demo-speeds" role="radiogroup" aria-label="Demo tempo">
+        ${d.speeds.map((b) => `<button type="button" role="radio" data-bpm="${b}" aria-checked="${b === speed}">${b}</button>`).join("")}
+        <span>BPM</span></div>` : d.speeds ? `<span class="demo-at">${d.speeds[0]} BPM</span>` : ""}
+    </div>
+    <p class="demo-cap" id="demo-cap" aria-live="polite">${esc(d.caption)}</p>` : ""}
+    ${note ? `<p class="demo-note">${esc(note)}</p>` : ""}
+    ${listen ? `<a class="listen" href="${listenUrl(listen)}" target="_blank" rel="noopener">Hear ${esc(listen.title)} on Spotify<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h9v9M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>` : ""}`;
+  if (!d) return;
+
+  const btn = el.querySelector("#demo-play");
+  const cap = el.querySelector("#demo-cap");
+  const figs = [...main.querySelectorAll(".chords figure")];
+  let handle = null;
+  const total = skill.notes?.length || 0;
+
+  const reset = () => {
+    handle = null;
+    btn.innerHTML = `${ICON_PLAY}<span>Hear it</span>`;
+    btn.classList.remove("playing");
+    cap.textContent = d.caption;
+    panel?.view?.reset();
+    figs.forEach((f) => f.classList.remove("sounding"));
+  };
+  const onCue = (c) => {
+    if (c.countIn !== undefined || c.step !== undefined) panel?.view?.show(c);
+    if (c.countIn) cap.textContent = `Count-in: ${c.beat + 1}`;
+    else if (c.bar) cap.textContent = `Bar ${c.bar}`;
+    if (c.string !== undefined) cap.textContent = `${STRING_NAMES[c.string]} string`;
+    else if (c.label) cap.textContent = c.label;
+    if (c.index !== undefined) cap.textContent = `Note ${c.index + 1} of ${total}`;
+    if (c.chord !== undefined) {
+      const id = skill.pair[c.chord];
+      figs.forEach((f) => f.classList.toggle("sounding", f.dataset.chord === id));
+      cap.textContent = CHORDS[id].name;
+    }
+  };
+
+  btn.addEventListener("click", () => {
+    if (handle) return handle.stop();
+    btn.innerHTML = `${ICON_STOP}<span>Stop</span>`;
+    btn.classList.add("playing");
+    panel?.view?.prepare?.();
+    handle = playScore(d.score(speed), { onCue, onEnd: reset });
+  });
+  el.querySelectorAll("[data-bpm]").forEach((b) =>
+    b.addEventListener("click", () => {
+      speed = Number(b.dataset.bpm);
+      el.querySelectorAll("[data-bpm]").forEach((x) => x.setAttribute("aria-checked", x === b));
+      if (handle) {
+        handle.stop();
+        btn.click();
+      }
+    }),
+  );
 }
 
 // The last mic check per skill, shown again after the page redraws.
@@ -270,7 +379,10 @@ function ladderPanel(panel, skill, rerender) {
   const sym = (id) => esc(CHORDS[id].sym);
   const tokens = skill.pattern ? skill.pattern.split(" ") : null;
   const per = tokens ? tokens.length / skill.beatsPerBar : 0;
-  const counts = tokens?.length === 16 ? ["1", "e", "&", "a", "2", "e", "&", "a", "3", "e", "&", "a", "4", "e", "&", "a"] : ["1", "&", "2", "&", "3", "&", "4", "&"];
+  const counts = tokens ? countLabels(tokens.length, skill.beatsPerBar) : [];
+  const picking = tokens?.some((t) => /^[T1-6]$/.test(t));
+  const hasGuide = !!guideFor(skill, CHORDS, bpm, 1);
+  state.prefs ||= {};
   panel.innerHTML = `
     <div class="panel ladder ${prog ? "has-prog" : ""}">
       ${prog ? `
@@ -279,8 +391,9 @@ function ladderPanel(panel, skill, rerender) {
       <div class="tempo"><span class="bpm">${bpm}</span><span class="unit">BPM</span></div>
       <ol class="rungs" aria-label="Tempo ladder">${ladderRungs(skill, bpm, ss.best || 0)}</ol>
       <div class="beats" aria-hidden="true">${Array.from({ length: skill.beatsPerBar }, (_, i) => `<i class="${i === 0 ? "one" : ""}"></i>`).join("")}</div>
-      ${tokens ? `<ol class="pattern ${tokens.length === 16 ? "sixteen" : ""}" aria-label="Strum pattern">${tokens.map((t, i) => `<li data-i="${i}" class="${t === "-" ? "rest" : t === "X" ? "chuck" : ""}"><b>${t === "-" ? "·" : t}</b><small>${counts[i]}</small></li>`).join("")}</ol>
-        <p class="pkey">D down, U up${tokens.includes("X") ? ", X muted chuck" : ""}${tokens.includes("-") ? ", dot: hand moves but misses the strings" : ""}</p>` : ""}
+      ${tokens ? `<ol class="pattern ${tokens.length === 16 ? "sixteen" : ""}" style="grid-template-columns: repeat(${tokens.length}, 1fr)" aria-label="${picking ? "Picking" : "Strum"} pattern">${tokens.map((t, i) => `<li data-i="${i}" class="${t === "-" ? "rest" : t === "X" ? "chuck" : /^[T1-6]$/.test(t) ? "pick" : ""}"><b>${t === "-" ? "·" : t}</b><small>${counts[i]}</small></li>`).join("")}</ol>
+        <p class="pkey">${picking ? "T thumb on the bass note; 1, 2, 3 pluck the high E, B and G strings" : `D down, U up${tokens.includes("X") ? ", X muted chuck" : ""}${tokens.includes("-") ? ", dot: hand moves but misses the strings" : ""}`}</p>` : ""}
+      ${hasGuide ? `<label class="guide"><input type="checkbox" id="guide" ${state.prefs.guide ? "checked" : ""}> Guide guitar plays along with the run</label>` : ""}
       <p class="caption" id="barline">${bars} bars per run, after a 1-bar count-in</p>
       <button type="button" class="go" id="go">Start run</button>
       <div class="rate-wrap" id="rate" hidden>
@@ -301,18 +414,25 @@ function ladderPanel(panel, skill, rerender) {
   const cells = [...panel.querySelectorAll(".pattern li")];
   const chips = [...panel.querySelectorAll(".pchips li")];
   let metro = null;
+  let guide = null;
 
   const showBar = (bar) => {
     if (!prog) return;
     const i = Math.max(0, bar - 1) % prog.length;
-    panel.querySelector("#p-now").textContent = CHORDS[prog[i]].sym;
+    const now = panel.querySelector("#p-now");
+    now.textContent = CHORDS[prog[i]].sym;
+    fitChord(now);
     panel.querySelector("#p-next").textContent = CHORDS[prog[(i + 1) % prog.length]].sym;
     chips.forEach((c, k) => c.classList.toggle("now", k === i));
   };
 
+  fitChord(panel.querySelector("#p-now") || document.createElement("i"));
+
   const finish = () => {
     metro?.stop();
     metro = null;
+    guide?.stop();
+    guide = null;
     keepAwake(false);
     dots.forEach((d) => d.classList.remove("hit"));
     cells.forEach((c) => c.classList.remove("hit"));
@@ -334,6 +454,8 @@ function ladderPanel(panel, skill, rerender) {
     // keep what you play from (the chord, the beat) on screen during the run
     panel.querySelector(".ladder").classList.add("running");
     panel.scrollIntoView({ block: "start", behavior: "smooth" });
+    stopDemo();
+    const guideScore = panel.querySelector("#guide")?.checked ? guideFor(skill, CHORDS, bpm, bars) : null;
     metro = new Metronome({
       bpm, beatsPerBar: skill.beatsPerBar, countInBars: 1, bars,
       onBeat: ({ beat, bar, countIn }) => {
@@ -346,7 +468,32 @@ function ladderPanel(panel, skill, rerender) {
       onEnd: () => metro && finish(),
     });
     metro.start();
+    if (guideScore) guide = playScore(guideScore, { at: metro.startTime + (skill.beatsPerBar * 60) / bpm, volume: 0.5 });
   });
+
+  panel.querySelector("#guide")?.addEventListener("change", (e) => {
+    state.prefs = { ...state.prefs, guide: e.target.checked };
+    save(state);
+  });
+
+  // lets the demo light up the beat, strum and chord as it plays
+  panel.view = {
+    prepare: () => {
+      if (metro) finish();
+    },
+    show: ({ countIn, beat, bar, step }) => {
+      dots.forEach((d, i) => d.classList.toggle("hit", i === beat));
+      cells.forEach((c, i) => c.classList.toggle("hit", !countIn && i === step));
+      showBar(countIn ? 1 : bar);
+    },
+    reset: () => {
+      dots.forEach((d) => d.classList.remove("hit"));
+      cells.forEach((c) => c.classList.remove("hit"));
+      chips.forEach((c) => c.classList.remove("now"));
+      showBar(1);
+      if (prog) chips.forEach((c) => c.classList.remove("now"));
+    },
+  };
 
   rate.querySelectorAll("[data-r]").forEach((b) =>
     b.addEventListener("click", () => {
@@ -361,7 +508,24 @@ function ladderPanel(panel, skill, rerender) {
   cleanup = () => {
     metro?.stop();
     metro = null;
+    guide?.stop();
+    guide = null;
   };
+}
+
+// Long chord names (Gmaj7, Am(add9)) shrink so they fit beside "then".
+function fitChord(el) {
+  const n = el.textContent.length;
+  el.style.fontSize = n > 5 ? "54px" : n > 3 ? "68px" : n > 2 ? "84px" : "";
+}
+
+// Count labels under a pattern: 1 & 2 & for eighths, 1 e & a for sixteenths,
+// 1 to 6 for a bar of 6/8.
+function countLabels(n, beats) {
+  const per = n / beats;
+  const sub = per === 4 ? ["", "e", "&", "a"] : per === 2 ? ["", "&"] : null;
+  if (!sub) return Array.from({ length: n }, (_, i) => String(i + 1));
+  return Array.from({ length: n }, (_, i) => (i % per === 0 ? String(i / per + 1) : sub[i % per]));
 }
 
 function changesPanel(panel, skill, rerender) {
@@ -512,6 +676,101 @@ function earPanel(panel, skill, rerender) {
       rerender(before);
     }),
   );
+}
+
+// ---------- songs ----------
+
+const unitOf = (song) => findUnit(song.after);
+const songReady = (song) => unitProgress(state, unitOf(song)).done;
+const sectionsAtTempo = (song) => song.sections.filter((sec) => skillState(state, sectionSkill(song, sec).id).passed).length;
+
+function songMeta(song) {
+  return [
+    song.capo ? `Capo ${song.capo}` : "No capo",
+    song.tuning ? song.tuning.name : "",
+    `about ${song.bpm} BPM`,
+    song.beatsPerBar === 2 ? "6/8" : song.beatsPerBar === 3 ? "3/4" : "",
+  ].filter(Boolean);
+}
+
+function renderSongs() {
+  const order = (s) => UNITS.indexOf(unitOf(s));
+  const sorted = [...SONGS].sort((a, b) => order(a) - order(b) || a.title.localeCompare(b.title));
+  const row = (song) => {
+    const done = sectionsAtTempo(song);
+    const chords = songChords(song).map((c) => CHORDS[c].sym);
+    const syms = chords.filter((c, i) => chords.indexOf(c) === i);
+    return `<li><a href="#/song/${song.id}">
+      <span class="st">${esc(song.title)}</span>
+      <span class="sa">${esc(song.artist)}</span>
+      <span class="sm">${songMeta(song).slice(0, 2).map(esc).join(" · ")}${songReady(song) ? "" : ` · after unit ${unitOf(song).number}`}</span>
+      <span class="sc">${syms.map((c) => `<i>${esc(c)}</i>`).join("")}</span>
+      ${done ? `<span class="sd">${done === song.sections.length ? ICON_CHECK : `${done}/${song.sections.length}`}</span>` : ""}
+    </a></li>`;
+  };
+  const ready = sorted.filter(songReady);
+  const later = sorted.filter((s) => !songReady(s));
+  main.innerHTML = `
+    <header class="top"><div class="wordmark">Songs</div></header>
+    <p class="songs-intro">Hear the chords, then play along from a slow tempo up to the record's. Every song is open; the unit tag says when the path has taught what it needs.</p>
+    ${ready.length ? `<h2 class="songs-h">Ready now</h2><ol class="songlist">${ready.map(row).join("")}</ol>` : ""}
+    ${later.length ? `<h2 class="songs-h">Coming up on the path</h2><ol class="songlist">${later.map(row).join("")}</ol>` : ""}`;
+}
+
+function renderSong(id, sectionId) {
+  const song = findSong(id);
+  if (!song) return (location.hash = "#/songs");
+  cleanup?.();
+  cleanup = null;
+  stopDemo();
+  const section = song.sections.find((s) => s.id === sectionId) || song.sections[0];
+  state.prefs ||= {};
+  const capoOn = state.prefs.demoCapo !== false;
+  const skill = { ...sectionSkill(song, section), listen: song };
+  if (!capoOn) skill.capo = 0;
+  const ss = skillState(state, skill.id);
+  const unit = unitOf(song);
+
+  main.innerHTML = `
+    <header class="bar">
+      <a class="back" href="#/songs" aria-label="Back to songs">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <span>${esc(song.artist)}</span>
+    </header>
+    <section class="skill-head">
+      <h1>${esc(song.title)}</h1>
+      <p class="song-meta">${songMeta(song).map((m) => `<span>${esc(m)}</span>`).join("")}</p>
+      ${songReady(song) ? "" : `<p class="song-after">Best after unit ${unit.number}, ${esc(unit.title)}. Try it anyway.</p>`}
+    </section>
+    ${song.sections.length > 1 ? `<nav class="sections" aria-label="Sections">${song.sections.map((s) => `<a href="#/song/${song.id}/${s.id}" ${s === section ? `aria-current="page"` : ""}>${esc(s.name)}${skillState(state, sectionSkill(song, s).id).passed ? ICON_CHECK : ""}</a>`).join("")}</nav>` : ""}
+    ${ss.passed ? `<div class="passed-note"><span>${esc(section.name)} played clean at the record's tempo.</span></div>` : ""}
+    <section class="demo" id="demo"></section>
+    ${song.capo ? `<label class="guide capo-toggle"><input type="checkbox" id="capo" ${capoOn ? "checked" : ""}> Demos with the capo on (the record's key). No capo? Untick so they match you.</label>` : ""}
+    <div id="panel"></div>
+    ${chordFigures(section.progression.filter((c, i) => section.progression.indexOf(c) === i), skill.tuning)}
+    <section class="how">
+      <h2>How to play it</h2>
+      <ol>${song.how.map((h) => `<li>${esc(h)}</li>`).join("")}
+        <li>Charts and tempos here follow common arrangements. Check them against the record by ear.</li></ol>
+    </section>`;
+
+  const panel = main.querySelector("#panel");
+  ladderPanel(panel, skill, (before) => {
+    const now = skillState(state, skill.id).passed;
+    renderSong(song.id, section.id);
+    if (now && !before) {
+      toast(`${section.name} at record tempo`);
+      buzz();
+    }
+  });
+  mountDemo(main.querySelector("#demo"), skill, panel, { bpm: currentBpm(state, skill) });
+  wireChordTaps(skill);
+  main.querySelector("#capo")?.addEventListener("change", (e) => {
+    state.prefs = { ...state.prefs, demoCapo: e.target.checked };
+    save(state);
+    renderSong(song.id, section.id);
+  });
 }
 
 // ---------- tuner ----------

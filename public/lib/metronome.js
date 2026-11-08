@@ -47,6 +47,7 @@ export class Metronome {
     this.running = true;
     this.beat = 0;
     this.nextTime = ac.currentTime + 0.12;
+    this.startTime = this.nextTime; // audio time of the first click, for syncing a guide track
     const tick = () => {
       while (this.running && this.nextTime < ac.currentTime + 0.12) {
         this.schedule(this.beat, this.nextTime);

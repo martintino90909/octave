@@ -10,6 +10,7 @@ import {
   unitUnlocked, skillUnlocked, currentUnit,
 } from "../public/lib/progress.js";
 import { load, save } from "../public/lib/store.js";
+import { SONGS, songChords } from "../public/lib/songs.js";
 import { chordSvg } from "../public/lib/chord.js";
 
 const unit = UNITS[0];
@@ -59,7 +60,7 @@ test("units are numbered in order, each in a known stage, stages in order", () =
 });
 
 test("every chord is used somewhere", () => {
-  const used = new Set(allSkills().flatMap(skillChords));
+  const used = new Set([...allSkills().flatMap(skillChords), ...SONGS.flatMap(songChords)]);
   for (const id of Object.keys(CHORDS)) assert.ok(used.has(id), `${id} is never used`);
 });
 
@@ -89,7 +90,7 @@ test("chord shapes sound the notes their names say", () => {
   // pitch classes from the frets, against the chord's intended notes
   const PC = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
   const OPEN = [4, 9, 2, 7, 11, 4];
-  const notes = (c) => [...new Set(c.frets.map((f, i) => (f < 0 ? null : PC[(OPEN[i] + f) % 12])).filter(Boolean))].sort();
+  const notes = (c) => [...new Set(c.frets.map((f, i) => (f < 0 ? null : PC[(OPEN[i] + 12 + f + (c.tuning?.[i] || 0)) % 12])).filter(Boolean))].sort();
   const want = {
     Em: "E G B", Am: "A C E", C: "C E G", G: "G B D", D: "D F♯ A", Dm: "D F A", F: "F A C",
     E5: "E B", A5: "A E", D5: "D A", G5: "G D", E5x7: "E B", Ds5x6: "D♯ A♯",
@@ -99,6 +100,13 @@ test("chord shapes sound the notes their names say", () => {
     Gmaj7sh: "G F♯ B", G7sh: "G F B", Gm7sh: "G F A♯", Cmaj7sh: "C B E", C7sh: "C A♯ E", Cm7sh: "C A♯ D♯",
     Dm7sh: "D C F", D7sh: "D C F♯", Am7sh: "A G C", Am7b5sh: "A G C", F7sh: "F D♯ A", Bb7sh: "A♯ G♯ D",
     Bbmaj7sh: "A♯ A D", Ebmaj7sh: "D♯ D G",
+    // songbook
+    E: "E G♯ B", A: "A C♯ E", Asus2: "A B E", Asus4: "A D E", Cadd9: "C D E G", Dsus4: "D G A", A7sus4: "A D E G",
+    Em7ww: "E G B D", Gww: "G B D", Bm7: "B D F♯ A", CG: "C E G", DF: "D E F♯ A", DF2: "D F♯ A", D69: "D E F♯ A B",
+    A5fr: "A B C♯ D♯ E", // high E tuned to D♯
+    // Sparks, high E tuned to D
+    spGmaj7: "G B D F♯", spEm7: "E G B D", spEm7o: "E G B D", spAm: "A B C D E", spG: "G B D",
+    spEmM9: "D D♯ F♯ G B", spG9: "F G A B D", spDbdim: "C♯ E G B D", spCmaj9: "C E G B D",
   };
   for (const [id, c] of Object.entries(CHORDS)) {
     assert.ok(want[id], `no expected notes for ${id}`);

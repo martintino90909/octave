@@ -8,6 +8,8 @@
 //               until `targetBpm` is played clean, which passes the gate.
 //               Optional: `progression` (chord ids, one per bar), `pattern`
 //               (8 or 16 strum tokens: D, U, X for a muted chuck, - for a miss).
+//               Demo-only: `mute` palm-mutes the guide; `picks` ([string, fret]
+//               notes, taken in turn) makes the demo pick single notes.
 //   "changes" — one-minute changes between two chords; pass at `target` changes.
 //   "ear"     — hear it, name it; `options` are keys of EAR in ear.js.
 //
@@ -64,6 +66,34 @@ export const CHORDS = {
   Bb7sh: { sym: "B♭7", name: "B♭7 shell", frets: [-1, 1, -1, 1, 3, -1], fingers: [0, 1, 0, 2, 4, 0] },
   Bbmaj7sh: { sym: "B♭maj7", name: "B♭maj7 shell", frets: [-1, 1, -1, 2, 3, -1], fingers: [0, 1, 0, 2, 3, 0] },
   Ebmaj7sh: { sym: "E♭maj7", name: "E♭maj7 shell", frets: [-1, 6, -1, 7, 8, -1], fingers: [0, 1, 0, 2, 3, 0] },
+
+  // songbook shapes (songs.js). Capo songs name shapes as you finger them;
+  // `tuning` marks shapes written for a retuned guitar (offsets from standard).
+  E: { sym: "E", name: "E major", frets: [0, 2, 2, 1, 0, 0], fingers: [0, 2, 3, 1, 0, 0] },
+  A: { sym: "A", name: "A major", frets: [-1, 0, 2, 2, 2, 0], fingers: [0, 0, 1, 2, 3, 0] },
+  Asus2: { sym: "Asus2", name: "A sus 2", frets: [-1, 0, 2, 2, 0, 0], fingers: [0, 0, 2, 3, 0, 0] },
+  Asus4: { sym: "Asus4", name: "A sus 4", frets: [-1, 0, 2, 2, 3, 0], fingers: [0, 0, 1, 2, 3, 0] },
+  Cadd9: { sym: "Cadd9", name: "C add 9", frets: [-1, 3, 2, 0, 3, 3], fingers: [0, 2, 1, 0, 3, 4] },
+  Dsus4: { sym: "Dsus4", name: "D sus 4", frets: [-1, -1, 0, 2, 3, 3], fingers: [0, 0, 0, 1, 3, 4] },
+  A7sus4: { sym: "A7sus4", name: "A7 sus 4", frets: [-1, 0, 2, 0, 3, 3], fingers: [0, 0, 2, 0, 3, 4] },
+  Em7ww: { sym: "Em7", name: "Em7 (ring and little finger down)", frets: [0, 2, 2, 0, 3, 3], fingers: [0, 1, 2, 0, 3, 4] },
+  Gww: { sym: "G", name: "G (B string at the 3rd)", frets: [3, 2, 0, 0, 3, 3], fingers: [2, 1, 0, 0, 3, 4] },
+  Bm7: { sym: "Bm7", name: "B minor 7", frets: [-1, 2, 4, 2, 3, 2], fingers: [0, 1, 3, 1, 2, 1], barre: { fret: 2, from: 1, to: 5 } },
+  CG: { sym: "C/G", name: "C over G", frets: [3, 3, 2, 0, 1, 0], fingers: [3, 4, 2, 0, 1, 0] },
+  DF: { sym: "D/F♯", name: "D/F♯, open top", frets: [2, -1, 0, 2, 3, 0], fingers: [1, 0, 0, 2, 3, 0] },
+  DF2: { sym: "D/F♯", name: "D over F♯", frets: [2, 0, 0, 2, 3, 2], fingers: [1, 0, 0, 2, 4, 3] },
+  D69: { sym: "D6/9", name: "D6/9 over F♯", frets: [2, -1, 0, 2, 0, 0], fingers: [1, 0, 0, 2, 0, 0] },
+  A5fr: { sym: "A", name: "A at the 5th fret, top open", frets: [5, 7, 7, 6, 0, 0], fingers: [1, 3, 4, 2, 0, 0], tuning: [0, 0, 0, 0, 0, -1] },
+  // Sparks: high E tuned down to D, capo 6
+  spGmaj7: { sym: "Gmaj7", name: "Gmaj7 (Sparks)", frets: [-1, 5, 4, 0, 0, 0], fingers: [0, 3, 2, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spEm7: { sym: "Em7", name: "Em7 (Sparks)", frets: [-1, 7, 5, 0, 0, 0], fingers: [0, 3, 1, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spEm7o: { sym: "Em7", name: "Em7, open (Sparks)", frets: [0, 2, 2, 0, 0, 0], fingers: [0, 2, 3, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spAm: { sym: "Am(add9)", name: "Am add 9 (Sparks)", frets: [5, 7, 7, 5, 0, 0], fingers: [1, 3, 4, 1, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spG: { sym: "G", name: "G (Sparks)", frets: [3, 5, 5, 4, 0, 0], fingers: [1, 3, 4, 2, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spEmM9: { sym: "Em(maj9)", name: "Em maj 9 (Sparks)", frets: [-1, 6, 4, 0, 0, 0], fingers: [0, 3, 1, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spG9: { sym: "G9", name: "G9 (Sparks)", frets: [-1, 8, 7, 0, 0, 0], fingers: [0, 3, 2, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spDbdim: { sym: "D♭dim", name: "D♭ dim (Sparks)", frets: [-1, 4, 2, 0, 0, 0], fingers: [0, 3, 1, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
+  spCmaj9: { sym: "Cmaj9", name: "Cmaj9 (Sparks)", frets: [-1, 3, 2, 0, 0, 0], fingers: [0, 3, 2, 0, 0, 0], tuning: [0, 0, 0, 0, 0, -2] },
 };
 
 export const STAGES = [
@@ -318,7 +348,7 @@ export const UNITS = [
         gate: "25 clean changes in a minute",
       },
       ladder({
-        id: "u4-alt-pick", title: "Alternate picking", pattern: P.eighths,
+        id: "u4-alt-pick", title: "Alternate picking", pattern: P.eighths, picks: [[5, 0]],
         how: [
           "Pick the open high E string: down on the click, up between.",
           "Small movements from the wrist; the pick barely leaves the string.",
@@ -327,7 +357,7 @@ export const UNITS = [
         gate: "8 bars of even eighth notes at 80 BPM", bars: 8, startBpm: 60, targetBpm: 80,
       }),
       ladder({
-        id: "u4-e85", title: "E85 progression", progression: ["Dm", "Em", "Am", "G", "F"], pattern: P.quarters,
+        id: "u4-e85", listen: { title: "E85", artist: "Don Toliver" }, title: "E85 progression", progression: ["Dm", "Em", "Am", "G", "F"], pattern: P.quarters,
         how: [
           "Fan charts write E85 as Dm, Em, Am, G, F with a capo on the 2nd fret. Check it against the record.",
           "One chord per bar here; listen to the track for exactly where each change lands.",
@@ -336,7 +366,7 @@ export const UNITS = [
         gate: "20 bars with no stops at 95 BPM", bars: 20, startBpm: 65, targetBpm: 95,
       }),
       {
-        id: "u4-e85-play", type: "reps", title: "Play along: E85", streak: 1, progression: ["Dm", "Em", "Am", "G", "F"],
+        id: "u4-e85-play", listen: { title: "E85", artist: "Don Toliver" }, type: "reps", title: "Play along: E85", streak: 1, progression: ["Dm", "Em", "Am", "G", "F"],
         how: [
           "Put E85 on. With a capo (even a makeshift one) on the 2nd fret, you'll be in the record's key.",
           "Find where Dm comes round and come in there. Strum along through the whole track.",
@@ -354,7 +384,7 @@ export const UNITS = [
     summary: "Two-note chords with bite, the palm mute, and the Tore Up riff.",
     skills: [
       ladder({
-        id: "u5-chugs", title: "Palm-muted chugs", chord: "E5", pattern: P.chugs,
+        id: "u5-chugs", mute: true, title: "Palm-muted chugs", chord: "E5", pattern: P.chugs,
         how: [
           "Rest the edge of your strumming hand on the strings right where they meet the bridge.",
           "Strum down on every eighth note, two per click. You want a tight 'chug', not a ring.",
@@ -373,7 +403,7 @@ export const UNITS = [
         gate: "3 strings ring clean, 5 tries in a row",
       }),
       ladder({
-        id: "u5-power-loop", title: "Power chord loop", progression: ["E5", "A5", "D5", "A5"], pattern: P.chugs,
+        id: "u5-power-loop", mute: true, title: "Power chord loop", progression: ["E5", "A5", "D5", "A5"], pattern: P.chugs,
         how: [
           "Open-string power chords: E5, A5, D5, A5, one bar each, palm muted.",
           "Each is just an open root with the 5th (and sometimes the octave) above it: no major or minor.",
@@ -381,7 +411,7 @@ export const UNITS = [
         gate: "16 bars with no stops at 100 BPM", bars: 16, startBpm: 70, targetBpm: 100,
       }),
       ladder({
-        id: "u5-crossing", title: "String crossing", pattern: P.eighths,
+        id: "u5-crossing", title: "String crossing", pattern: P.eighths, picks: [[4, 0], [5, 0]],
         how: [
           "Alternate pick between the open B and high E strings: down on B, up on E.",
           "Keep the down-up motion going as you cross; don't stop to aim.",
@@ -389,7 +419,7 @@ export const UNITS = [
         gate: "8 bars clean at 70 BPM", bars: 8, startBpm: 55, targetBpm: 70,
       }),
       ladder({
-        id: "u5-toreup", title: "Tore Up riff", progression: ["E5x7", "Ds5x6"], pattern: P.chugs,
+        id: "u5-toreup", listen: { title: "Tore Up", artist: "Don Toliver" }, mute: true, title: "Tore Up riff", progression: ["E5x7", "Ds5x6"], pattern: P.chugs,
         how: [
           "Power chord on the A string: E5 at the 7th fret, then the same shape one fret down for D♯5.",
           "Palm-muted chugs, alternating one bar each.",
@@ -560,7 +590,7 @@ export const UNITS = [
         rateLabel: "Every note right?",
       },
       ladder({
-        id: "u9-time", title: "The box in time", pattern: P.eighths,
+        id: "u9-time", title: "The box in time", pattern: P.eighths, picks: [...PENT_A, ...PENT_A.slice(1, -1).reverse()],
         how: [
           "Up and down the box, two notes per click, alternate picking.",
           "Turn round at the top without a pause.",
@@ -968,7 +998,7 @@ export const UNITS = [
         gate: "3 strings ring clean, 5 tries in a row",
       }),
       ladder({
-        id: "u18-changes", title: "The A section", pattern: P.quarters,
+        id: "u18-changes", listen: { title: "Autumn Leaves", artist: "jazz" }, title: "The A section", pattern: P.quarters,
         progression: ["Cm7sh", "F7sh", "Bbmaj7sh", "Ebmaj7sh", "Am7b5sh", "D7sh", "Gm7sh", "Gm7sh"],
         how: [
           "Cm7, F7, B♭maj7, E♭maj7, Am7♭5, D7, Gm7: the first section of Autumn Leaves in G minor.",
@@ -978,7 +1008,7 @@ export const UNITS = [
         gate: "16 bars with no stops at 110 BPM", bars: 16, startBpm: 60, targetBpm: 110, step: 10,
       }),
       ladder({
-        id: "u18-comp", title: "Comp the changes", pattern: P.charleston,
+        id: "u18-comp", listen: { title: "Autumn Leaves", artist: "jazz" }, title: "Comp the changes", pattern: P.charleston,
         progression: ["Cm7sh", "F7sh", "Bbmaj7sh", "Ebmaj7sh", "Am7b5sh", "D7sh", "Gm7sh", "Gm7sh"],
         how: [
           "The same changes, with the Charleston rhythm.",
@@ -987,7 +1017,7 @@ export const UNITS = [
         gate: "16 bars with no stops at 130 BPM", bars: 16, startBpm: 80, targetBpm: 130, step: 10,
       }),
       {
-        id: "u18-head", type: "reps", title: "The melody by ear", streak: 1,
+        id: "u18-head", listen: { title: "Autumn Leaves", artist: "jazz" }, type: "reps", title: "The melody by ear", streak: 1,
         how: [
           "Listen to a few versions of Autumn Leaves and pick one you like.",
           "Learn the melody one phrase at a time, by ear, starting on the B string.",
