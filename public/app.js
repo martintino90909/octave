@@ -12,6 +12,8 @@ import { mountTuner, mountStringCheck, mountNoteCheck, describeNote, stringName 
 import { demoFor, guideFor, strumDemo } from "./lib/demo.js";
 import { playScore, stopDemo, loadBank } from "./lib/demoplay.js";
 import { SONGS, findSong, songChords, sectionSkill, listenUrl } from "./lib/songs.js";
+import { canPlay } from "./lib/play.js";
+import { renderPlay, playRecord, starsHtml } from "./playui.js";
 
 let state = load();
 const main = document.getElementById("main");
@@ -43,9 +45,11 @@ function route() {
   stopDemo();
   keepAwake(false);
   const hash = location.hash.replace(/^#/, "") || "/";
-  const [, page, id, sub] = hash.split("/");
+  const [, page, id, sub, sub2] = hash.split("/");
   document.querySelectorAll(".tabs a").forEach((a) => {
-    const on = (page || "path") === a.dataset.tab || ((page === "skill" || page === "unit") && a.dataset.tab === "path") || (page === "song" && a.dataset.tab === "songs");
+    const on = (page || "path") === a.dataset.tab ||
+      ((page === "skill" || page === "unit" || (page === "play" && id === "skill")) && a.dataset.tab === "path") ||
+      ((page === "song" || (page === "play" && id === "song")) && a.dataset.tab === "songs");
     a.toggleAttribute("aria-current", on);
   });
   if (page === "skill" && id) renderSkill(id);
@@ -53,6 +57,7 @@ function route() {
   else if (page === "tuner") renderTuner();
   else if (page === "songs") renderSongs();
   else if (page === "song" && id) renderSong(id, sub);
+  else if (page === "play" && sub) renderPlayRoute(id, sub, sub2);
   else renderPath(page === "unit" ? id : null);
   main.scrollTop = 0;
 }
@@ -183,7 +188,10 @@ function renderSkill(id) {
   if (skill.type === "ladder") ladderPanel(panel, skill, rerender);
   if (skill.type === "changes") changesPanel(panel, skill, rerender);
   if (skill.type === "ear") earPanel(panel, skill, rerender);
-  mountDemo(main.querySelector("#demo"), skill, panel, { bpm: skill.type === "ladder" ? currentBpm(state, skill) : null });
+  mountDemo(main.querySelector("#demo"), skill, panel, {
+    bpm: skill.type === "ladder" ? currentBpm(state, skill) : null,
+    play: canPlay(skill) ? { href: `#/play/skill/${skill.id}`, id: skill.id } : null,
+  });
   wireChordTaps(skill);
 }
 
@@ -222,10 +230,10 @@ function wireChordTaps(skill) {
 
 // The "Hear it" card: plays the skill's demo and lights up the screen in time.
 // panel.view, when a ladder panel set one, shows the beat, strum and chord.
-function mountDemo(el, skill, panel, { bpm, note } = {}) {
+function mountDemo(el, skill, panel, { bpm, note, play } = {}) {
   const d = demoFor(skill, CHORDS, { bpm });
   const listen = skill.listen;
-  if (!d && !listen) return el.remove();
+  if (!d && !listen && !play) return el.remove();
   if (d) loadBank(); // fetch the guitar notes while you read
   // default to the goal tempo: the demo is what you're aiming for
   let speed = d?.speeds ? d.speeds[d.speeds.length - 1] : null;
@@ -238,6 +246,7 @@ function mountDemo(el, skill, panel, { bpm, note } = {}) {
     </div>
     <p class="demo-cap" id="demo-cap" aria-live="polite">${esc(d.caption)}</p>` : ""}
     ${note ? `<p class="demo-note">${esc(note)}</p>` : ""}
+    ${play ? `<a class="play-link" href="${play.href}"><span class="pl-l">${ICON_PLAY}Play along</span><span class="pl-r">${playRecord(state, play.id).runs ? starsHtml(playRecord(state, play.id).stars, 18) : "Mic-graded, with stars"}</span></a>` : ""}
     ${listen ? `<a class="listen" href="${listenUrl(listen)}" target="_blank" rel="noopener">Hear ${esc(listen.title)} on Spotify<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h9v9M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>` : ""}`;
   if (!d) return;
 
@@ -687,6 +696,9 @@ function songMeta(song) {
   ].filter(Boolean);
 }
 
+// best play-along stars on any section of a song
+const songStars = (song) => Math.max(0, ...song.sections.map((sec) => playRecord(state, sectionSkill(song, sec).id).stars));
+
 function renderSongs() {
   const order = (s) => UNITS.indexOf(unitOf(s));
   const sorted = [...SONGS].sort((a, b) => order(a) - order(b) || a.title.localeCompare(b.title));
@@ -700,6 +712,7 @@ function renderSongs() {
       <span class="sm">${songMeta(song).slice(0, 2).map(esc).join(" · ")}${songReady(song) ? "" : ` · after unit ${unitOf(song).number}`}</span>
       <span class="sc">${syms.map((c) => `<i>${esc(c)}</i>`).join("")}</span>
       ${done ? `<span class="sd">${done === song.sections.length ? ICON_CHECK : `${done}/${song.sections.length}`}</span>` : ""}
+      ${songStars(song) ? `<span class="sstars">${starsHtml(songStars(song), 15)}</span>` : ""}
     </a></li>`;
   };
   const ready = sorted.filter(songReady);
@@ -758,13 +771,35 @@ function renderSong(id, sectionId) {
       buzz();
     }
   });
-  mountDemo(main.querySelector("#demo"), skill, panel, { bpm: currentBpm(state, skill) });
+  mountDemo(main.querySelector("#demo"), skill, panel, { bpm: currentBpm(state, skill), play: { href: `#/play/song/${song.id}/${section.id}`, id: skill.id } });
   wireChordTaps(skill);
   main.querySelector("#capo")?.addEventListener("change", (e) => {
     state.prefs = { ...state.prefs, demoCapo: e.target.checked };
     save(state);
     renderSong(song.id, section.id);
   });
+}
+
+// ---------- play along ----------
+
+function renderPlayRoute(kind, id, sectionId) {
+  const common = { getState: () => state, setState: (next) => commit(next) };
+  if (kind === "skill") {
+    const found = findSkill(id);
+    if (!found || !canPlay(found.skill)) return (location.hash = "#/");
+    const { skill, unit } = found;
+    if (!skillUnlocked(state, UNITS, unit, unit.skills.indexOf(skill))) return (location.hash = `#/unit/${unit.id}`);
+    cleanup = renderPlay(main, { ...common, id: skill.id, title: skill.title, back: `#/skill/${skill.id}`, skill, notes: [`Unit ${unit.number}`] });
+    return;
+  }
+  const song = findSong(id);
+  if (!song) return (location.hash = "#/songs");
+  const section = song.sections.find((s) => s.id === sectionId) || song.sections[0];
+  const capoOn = state.prefs?.demoCapo !== false;
+  const skill = { ...sectionSkill(song, section) };
+  if (!capoOn) skill.capo = 0;
+  const notes = [skill.capo ? `Capo ${skill.capo}` : song.capo ? "No capo (shapes only)" : "No capo", song.tuning?.name].filter(Boolean);
+  cleanup = renderPlay(main, { ...common, id: skill.id, title: `${song.title}: ${section.name}`, back: `#/song/${song.id}/${section.id}`, skill, notes });
 }
 
 // ---------- tuner ----------

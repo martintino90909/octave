@@ -355,6 +355,19 @@ export function renderScore(score, sampleRate, { peak = 0.8, bank = null } = {})
       const s = new Float32Array(len);
       for (let i = 0; i < len; i++) s[i] = Math.sin((2 * Math.PI * f * i) / sampleRate) * (1 - i / len) ** 2;
       add(ev.t, s, 0.5);
+    } else if (ev.kind === "tick") {
+      // play-mode click: a short, bright noise tick with no pitch, so the mic
+      // can't mistake it for a note (its energy sits above the guitar's range)
+      const len = Math.floor(0.012 * sampleRate);
+      const s = new Float32Array(len);
+      let r = seed, prev = 0;
+      for (let i = 0; i < len; i++) {
+        r = (r * 16807) % 2147483647;
+        const x = (r / 2147483647) * 2 - 1;
+        s[i] = (x - prev) * (1 - i / len) ** 2; // first difference: a crude high-pass
+        prev = x;
+      }
+      add(ev.t, s, ev.accent ? 0.5 : 0.3);
     } else if (ev.kind === "chuck") {
       // a short, dull thud: strings muted by the fretting hand
       const len = Math.floor(0.06 * sampleRate);

@@ -32,6 +32,17 @@ Drill types:
 - *Guide guitar:* tick it on a tempo run and the demo plays along under the metronome, at your tempo.
 - Song-based skills (E85, Tore Up, Autumn Leaves) link to the record on Spotify.
 
+**Play along (Yousician-style).** Every drill with notes or chords to play, and every song section, has a *Play along* button. The tab scrolls right to left (high E on top, fret numbers on the strings, strum arrows spanning the chord's strings) towards a yellow play line, and the mic grades each note and down-strum as you play it:
+
+- *Keep time:* scrolls at the tempo, with a pitchless click on each beat. Each note is *Perfect* (within 90 ms), *Good* (a little early or late), or a *Miss*, which says why: too late or early, wrong note (a fret high or low), chord didn't ring, or nothing heard. Live score, streak and mic meter; the chord boxes light up as the chord changes.
+- *Wait for me:* the chart stops at each note and chord change until you play it. No timing, no stars; for learning the shapes.
+- *Speed* 60%, 80% or 100% of the target tempo. Stars at 50%, 75% and 90%; three stars only at full speed, two at 80%, one at 60%.
+- Optional *guide guitar* under the run (with headphones, or the mic hears it).
+- *Results:* stars, score, counts, best streak, what you missed most, one line of advice, and a best score kept per drill and song section (song stars show on the Songs tab).
+- *Timing:* if your hits are consistently late or early, results offer to adjust Octave's timing by that amount to match your phone's mic delay.
+
+Up-strums are shown but not graded: a phone mic can't reliably tell them apart. Chords count once enough of their notes are heard after the strum, so a chord with a buzzing string can still pass; it catches the wrong chord, not every dead string (the string-by-string chord check does that).
+
 **Songs tab.** Acoustic songs outside the path: Yellow, Wonderwall, Knockin' on Heaven's Door, Stand By Me, A Horse with No Name, Wish You Were Here, Hallelujah, Exit Music (For a Film), Iris, Need 2 and Sparks. Each has its capo and tuning, chord boxes, sections, a demo at the record's key (untick the capo box to hear it at yours), a tempo ladder up to the record's speed, and a Spotify link. Every song is open; a tag says which unit teaches what it needs. Demos play chords only, not melodies. Charts follow common arrangements and tempos are approximate, so check them against the record.
 
 Also: tuner, free metronome, minutes practised today and a day streak. Installable to the iPhone home screen.
@@ -57,6 +68,8 @@ Progress is saved on the phone for now. Cloud storage (Octave's own, behind a pa
 | Demo playback, recorded-note loading and live highlighting | `public/lib/demoplay.js` |
 | Recorded guitar notes (MIDI 40–84, FluidR3, MIT) | `public/samples/guitar/` |
 | The songbook | `public/lib/songs.js` |
+| Play along: charts, mic grading, scoring | `public/lib/play.js` |
+| Play along screen and scrolling tab | `public/playui.js` |
 | Worker entry (serves the app) | `src/worker.js` |
 | Cloudflare config | `wrangler.jsonc` |
 | Tests | `test/` (run `npm test`); mic logic is tested on simulated plucked strings |

@@ -170,6 +170,40 @@ export function presence(input, sampleRate, freq, { gate = 0.008 } = {}) {
   return 1 - Math.min(dn[Math.floor(tau)], dn[Math.ceil(tau)]);
 }
 
+// The pick's attack: how much brighter the newest ~20 ms of the frame is than
+// the ~20 ms before it. A strum or pick starts with a burst of high
+// frequencies that a ringing string no longer has, so this catches a re-strum
+// of a chord that's still ringing, where the overall level barely moves.
+// Returns { hf, prev }: RMS of the first difference of each chunk.
+export function attack(input, chunk = 1024) {
+  const n = input.length;
+  const part = (from, to) => {
+    let s = 0;
+    for (let i = Math.max(1, from); i < to; i++) {
+      const d = input[i] - input[i - 1];
+      s += d * d;
+    }
+    return Math.sqrt(s / Math.max(1, to - from));
+  };
+  return { hf: part(n - chunk, n), prev: part(n - 2 * chunk, n - chunk) };
+}
+
+// presence() for many notes on one reading: the difference function is worked
+// out once, down to minFreq, and each note is a lookup. Same values as
+// presence(), at a fraction of the cost when a chord's six notes are checked.
+export function prober(input, sampleRate, { gate = 0.008, minFreq = 70 } = {}) {
+  const frame = frameOf(input, sampleRate);
+  if (frame.rawLevel < gate) return () => 0;
+  const { buf, sr } = frame;
+  const tauMax = Math.min(Math.ceil(sr / minFreq) + 1, Math.floor(buf.length / 2) - 1);
+  const dn = normalisedDifference(buf, tauMax);
+  return (freq) => {
+    const tau = sr / freq;
+    if (Math.ceil(tau) + 1 > tauMax) return 0;
+    return 1 - Math.min(dn[Math.floor(tau)], dn[Math.ceil(tau)]);
+  };
+}
+
 // Smooths a stream of readings: reports a pitch once the last few agree,
 // which filters out pick noise and the odd octave slip.
 export class PitchSmoother {

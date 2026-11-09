@@ -37,9 +37,15 @@ export async function openMic() {
       await ac.resume();
     } catch {}
   }
+  // input latency in seconds, where the browser reports it (play mode timing)
+  let latency = null;
+  try {
+    latency = stream.getAudioTracks()[0]?.getSettings?.().latency ?? null;
+  } catch {}
   return {
     ac,
     analyser,
+    latency,
     close() {
       stream.getTracks().forEach((t) => t.stop());
       source.disconnect();
